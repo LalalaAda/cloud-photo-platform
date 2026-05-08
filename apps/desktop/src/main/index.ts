@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import { readFile, unlink } from 'node:fs/promises'
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, statSync, watch } from 'node:fs'
 import { join, extname, basename } from 'node:path'
 import { IpcChannels, createMedia, getMediaTypeByExtension, generateId } from '@cloud-photo/shared'
 import type { Media, ScanResult } from '@cloud-photo/shared'
@@ -143,6 +143,53 @@ ipcMain.handle(IpcChannels.CLIPBOARD_WRITE, async (_event, text: string) => {
 /** 打开外部链接 */
 ipcMain.handle(IpcChannels.OPEN_EXTERNAL, async (_event, url: string) => {
   await shell.openExternal(url)
+})
+
+// ====== 文件系统监听 ======
+
+/** 当前活跃的 watcher 实例 */
+let activeWatcher: ReturnType<typeof watch> | null = null
+
+/** 开始监听目录变化 */
+ipcMain.handle(IpcChannels.WATCH_DIRECTORY, async (event, dirPath: string) => {
+  // 关闭之前的监听
+  if (activeWatcher) {
+    activeWatcher.close()
+    activeWatcher = null
+  }
+
+  try {
+    activeWatcher = watch(dirPath, { recursive: true }, (_eventType, filename) => {
+      if (!filename || typeof filename !== 'string') return
+      const ext = extname(filename).toLowerCase()
+      const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.svg', '.avif', '.heic', '.heif']
+      const videoExts = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv']
+
+      if (!imageExts.includes(ext) && !videoExts.includes(ext)) return
+
+      // 通知渲染进程文件已变更
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IpcChannels.FILES_CHANGED, {
+          type: _eventType,
+          filename,
+          fullPath: join(dirPath, filename),
+        })
+      }
+    })
+    return true
+  } catch (err) {
+    console.error('[Watcher] Failed to start:', err)
+    return false
+  }
+})
+
+/** 停止文件监听 */
+ipcMain.handle(IpcChannels.UNWATCH_DIRECTORY, async () => {
+  if (activeWatcher) {
+    activeWatcher.close()
+    activeWatcher = null
+  }
+  return true
 })
 
 // ====== App Lifecycle ======

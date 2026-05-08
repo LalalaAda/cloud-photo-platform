@@ -7,6 +7,7 @@ import authRouter from './routes/auth'
 import albumsRouter from './routes/albums'
 import uploadRouter from './routes/upload'
 import downloadRouter from './routes/download'
+import syncRouter from './routes/sync'
 
 const app = express()
 
@@ -22,6 +23,7 @@ app.use('/api/media', mediaRouter)
 app.use('/api/albums', albumsRouter)
 app.use('/api/upload', uploadRouter)
 app.use('/api/download', downloadRouter)
+app.use('/api/sync', syncRouter)
 
 // 健康检查
 app.get('/api/health', (_req, res) => {

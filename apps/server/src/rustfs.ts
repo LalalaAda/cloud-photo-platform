@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3'
 import { config } from './config'
 
 let s3Client: S3Client | null = null
@@ -48,7 +48,17 @@ export async function uploadToRustfs(
   return `${baseUrl}/${config.rustfs.bucket}/${objectName}`
 }
 
-/** 从 RustFS 删除文件 */
+/** 从 RustFS 下载文件 */
+export async function downloadFromRustfs(objectName: string): Promise<Buffer> {
+  const client = getRustfsClient()
+  const response = await client.send(new GetObjectCommand({
+    Bucket: config.rustfs.bucket,
+    Key: objectName,
+  }))
+  return Buffer.from(await response.Body!.transformToByteArray())
+}
+
+/** 删除 RustFS 文件 */
 export async function deleteFromRustfs(objectName: string): Promise<void> {
   const client = getRustfsClient()
   await client.send(new DeleteObjectCommand({

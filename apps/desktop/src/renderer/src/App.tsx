@@ -6,7 +6,7 @@ import { Lightbox } from './components/Lightbox'
 import type { Media } from '@cloud-photo/shared'
 
 export default function App() {
-  const { files, scanDirectory, removeFiles, loading, error } = useMediaStore()
+  const { files, scanDirectory, rescanCurrentDir, removeFiles, loading, error, watching } = useMediaStore()
   const [lightboxMedia, setLightboxMedia] = useState<Media | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [focusedId, setFocusedId] = useState<string | null>(null)
@@ -55,6 +55,18 @@ export default function App() {
     }
   }, [files, selectedIds])
 
+  /** 同步到云端 */
+  const handleSyncToCloud = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/sync/status')
+      if (!res.ok) throw new Error('服务未运行')
+      const data = await res.json()
+      alert(`同步状态:\n本地待上传: ${data.localOnly}\n云端待下载: ${data.cloudOnly}\n已同步: ${data.synced}`)
+    } catch {
+      alert('无法连接同步服务，请确保后端已启动 (http://localhost:3001)')
+    }
+  }, [])
+
   /** 键盘快捷键 */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -88,6 +100,20 @@ export default function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [lightboxMedia, files, focusedId, handleDeleteSelected, handleSelectAll])
+
+  /** 文件变更监听（从主进程接收） */
+  useEffect(() => {
+    if (!window.electronAPI?.onFilesChanged) return
+    const unsubscribe = window.electronAPI.onFilesChanged((data) => {
+      // 文件变更时延迟 2 秒后自动重新扫描
+      const timer = setTimeout(() => {
+        rescanCurrentDir()
+      }, 2000)
+      // 清理旧 timer
+      return () => clearTimeout(timer)
+    })
+    return () => unsubscribe()
+  }, [rescanCurrentDir])
 
   /** 拖拽上传 */
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -161,8 +187,11 @@ export default function App() {
       {/* 顶部工具栏 */}
       <TopBar
         onOpenFolder={handleOpenFolder}
+        onRescan={rescanCurrentDir}
+        onSyncToCloud={handleSyncToCloud}
         fileCount={files.length}
         loading={loading}
+        watching={watching}
       />
 
       {/* 选中状态栏 */}

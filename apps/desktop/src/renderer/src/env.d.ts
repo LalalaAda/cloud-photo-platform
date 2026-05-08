@@ -2,6 +2,12 @@
 
 import type { ScanResult } from '@cloud-photo/shared'
 
+interface FileChangeEvent {
+  type: string
+  filename: string
+  fullPath: string
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -13,6 +19,12 @@ declare global {
       getAppPath: (name: string) => Promise<string>
       clipboardWrite: (text: string) => Promise<void>
       openExternal: (url: string) => Promise<void>
+      /** 开始监听目录文件变化 */
+      watchDirectory: (dirPath: string) => Promise<boolean>
+      /** 停止文件监听 */
+      unwatchDirectory: () => Promise<boolean>
+      /** 注册文件变更回调 */
+      onFilesChanged: (callback: (data: FileChangeEvent) => void) => () => void
     }
   }
 }

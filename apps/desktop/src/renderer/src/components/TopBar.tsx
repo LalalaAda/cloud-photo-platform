@@ -1,12 +1,15 @@
-import { FolderOpen, Search, Grid3X3, List, LayoutGrid } from 'lucide-react'
+import { FolderOpen, Search, Grid3X3, List, LayoutGrid, RefreshCw, Upload, Eye } from 'lucide-react'
 
 interface TopBarProps {
   onOpenFolder: () => void
+  onRescan?: () => void
+  onSyncToCloud?: () => void
   fileCount: number
   loading: boolean
+  watching: boolean
 }
 
-export function TopBar({ onOpenFolder, fileCount, loading }: TopBarProps) {
+export function TopBar({ onOpenFolder, onRescan, onSyncToCloud, fileCount, loading, watching }: TopBarProps) {
   return (
     <header className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/60">
       {/* 打开文件夹按钮 */}
@@ -18,6 +21,39 @@ export function TopBar({ onOpenFolder, fileCount, loading }: TopBarProps) {
         <FolderOpen size={16} />
         <span>打开文件夹</span>
       </button>
+
+      {/* 重新扫描 */}
+      {onRescan && (
+        <button
+          onClick={onRescan}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors text-xs text-zinc-400"
+          title="重新扫描当前目录"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <span>刷新</span>
+        </button>
+      )}
+
+      {/* 同步到云端 */}
+      {onSyncToCloud && (
+        <button
+          onClick={onSyncToCloud}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 transition-colors text-xs text-blue-300"
+          title="上传到云端存储"
+        >
+          <Upload size={14} />
+          <span>同步到云端</span>
+        </button>
+      )}
+
+      {/* 文件监听指示器 */}
+      {watching && (
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-900/20 border border-green-700/30 text-xs text-green-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          <span>实时监控中</span>
+        </div>
+      )}
 
       {/* 分隔线 */}
       <div className="w-px h-5 bg-zinc-700" />

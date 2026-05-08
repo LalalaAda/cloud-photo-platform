@@ -104,6 +104,11 @@ export const IpcChannels = {
   CLIPBOARD_WRITE: 'clipboard:write',
   /** 打开外部链接 */
   OPEN_EXTERNAL: 'shell:openExternal',
+  /** 文件系统监听 */
+  WATCH_DIRECTORY: 'fs:watchDirectory',
+  UNWATCH_DIRECTORY: 'fs:unwatchDirectory',
+  /** 文件变更通知（主→渲染） */
+  FILES_CHANGED: 'fs:filesChanged',
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]

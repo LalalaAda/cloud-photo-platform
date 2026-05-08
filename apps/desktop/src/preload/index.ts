@@ -32,6 +32,23 @@ const api = {
   /** 打开外部链接 */
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL, url),
+
+  /** 开始监听目录文件变化 */
+  watchDirectory: (dirPath: string): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.WATCH_DIRECTORY, dirPath),
+
+  /** 停止文件监听 */
+  unwatchDirectory: (): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.UNWATCH_DIRECTORY),
+
+  /** 注册文件变更回调（返回取消函数） */
+  onFilesChanged: (callback: (data: { type: string; filename: string; fullPath: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+    ipcRenderer.on(IpcChannels.FILES_CHANGED, handler)
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.FILES_CHANGED, handler)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)
