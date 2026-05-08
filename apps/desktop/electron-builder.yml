@@ -1,0 +1,22 @@
+appId: com.cloudphoto.app
+productName: Cloud Photo
+directories:
+  buildResources: resources
+  output: release
+files:
+  - out/**/*
+win:
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-setup.${ext}
+mac:
+  target:
+    - dmg
+  artifactName: ${productName}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+  artifactName: ${productName}-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
