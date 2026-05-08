@@ -66,6 +66,9 @@ export function createMedia(partial: Partial<Media> = {}): Media {
     createdAt: now,
     updatedAt: now,
     takenAt: null,
+    localModifiedAt: null,
+    cloudModifiedAt: null,
+    syncedAt: null,
     ...partial,
   }
 }

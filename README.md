@@ -1,6 +1,6 @@
 # ☁️ 云相册系统 (Cloud Photo Platform)
 
-融合高性能桌面体验与云端存储的云相册系统。Electron 桌面端 + Node.js 后端 + MinIO 对象存储。
+融合高性能桌面体验与云端存储的云相册系统。Electron 桌面端 + Node.js 后端 + RustFS (S3 兼容) 对象存储。
 
 ---
 
@@ -12,7 +12,7 @@
 | 前端框架 | Tailwind v4 + Lucide Icons + Zustand |
 | 构建工具 | Vite 6 + electron-vite |
 | 后端 | Express 5 + Drizzle ORM + sql.js |
-| 对象存储 | MinIO (AWS S3 兼容) |
+| 对象存储 | RustFS (AWS S3 兼容) |
 | 包管理 | pnpm 10 + Turborepo |
 
 ## 项目结构
@@ -38,13 +38,16 @@ cloud-photo-platform/
 - **全屏灯箱预览**: 键盘导航 (←/→/Esc/R)、旋转、EXIF 信息
 - **RESTful API**: Express 5 路由 (auth/media/albums/upload/download/sync)
 - **JWT 认证**: bcrypt 密码哈希 + 中间件鉴权
-- **对象存储**: MinIO 集成，自动建桶，优雅降级
+- **对象存储**: RustFS 集成，自动建桶，优雅降级
 - **文件魔数校验**: 上传时校验文件头防止伪装扩展名攻击
 - **批量下载**: archiver ZIP 流式打包
 - **同步引擎**:
-  - 本地→云端: `POST /api/sync/upload`
-  - 云端→本地: `POST /api/sync/download`
-  - 状态查询: `GET /api/sync/status`
+  - 本地→云端: `POST /api/sync/upload` (含冲突检测)
+  - 云端→本地: `POST /api/sync/download` (含冲突检测)
+  - 状态查询: `GET /api/sync/status` (含冲突计数)
+  - 冲突列表: `GET /api/sync/conflicts`
+  - 冲突解决: `POST /api/sync/resolve`
+- **同步冲突处理**: 自动检测双向冲突，桌面端 ConflictDialog 选择保留本地或云端
 - **实时文件监听**: Electron fs.watch 监控目录变更，自动刷新
 - **键盘快捷键**: Space 预览 / Ctrl+A 全选 / Delete 删除
 - **拖拽上传**: 从系统拖拽文件夹到窗口打开
@@ -91,6 +94,8 @@ pnpm --filter @cloud-photo/desktop dev
 | GET | `/api/sync/status` | 同步状态统计 |
 | POST | `/api/sync/upload` | 本地→云端同步 |
 | POST | `/api/sync/download` | 云端→本地同步 |
+| GET | `/api/sync/conflicts` | 冲突列表 |
+| POST | `/api/sync/resolve` | 解决冲突 |
 
 ## 项目文件统计
 

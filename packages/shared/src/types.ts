@@ -2,7 +2,7 @@
 export type MediaType = 'image' | 'video' | 'other'
 
 /** 媒体文件状态 */
-export type MediaStatus = 'local_only' | 'cloud_only' | 'synced' | 'syncing'
+export type MediaStatus = 'local_only' | 'cloud_only' | 'synced' | 'syncing' | 'conflict'
 
 /** 媒体文件元数据 */
 export interface Media {
@@ -29,6 +29,34 @@ export interface Media {
   updatedAt: string
   /** EXIF 拍摄时间 */
   takenAt: string | null
+  /** 本地文件最后修改时间（用于冲突检测） */
+  localModifiedAt: string | null
+  /** 云端文件最后修改时间（用于冲突检测） */
+  cloudModifiedAt: string | null
+  /** 上次成功同步时间戳 */
+  syncedAt: string | null
+}
+
+/** 同步冲突项 */
+export interface SyncConflictItem {
+  media: Media
+  /** 冲突方向 */
+  direction: 'local_to_cloud' | 'cloud_to_local' | 'bidirectional'
+  /** 本地文件实际修改时间 */
+  actualLocalModifiedAt: string | null
+  /** 云端文件实际修改时间 */
+  actualCloudModifiedAt: string | null
+  /** 本地文件是否仍存在 */
+  localExists: boolean
+  /** 云端文件是否仍存在 */
+  cloudExists: boolean
+}
+
+/** 冲突解决请求 */
+export interface ResolveConflictRequest {
+  mediaId: string
+  /** 保留哪一侧 */
+  resolution: 'keep_local' | 'keep_cloud'
 }
 
 /** 相册 */

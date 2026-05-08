@@ -1,11 +1,20 @@
 /// <reference types="vite/client" />
 
-import type { ScanResult } from '@cloud-photo/shared'
+import type { ScanResult, SyncConflictItem } from '@cloud-photo/shared'
 
 interface FileChangeEvent {
   type: string
   filename: string
   fullPath: string
+}
+
+interface SyncStatusResponse {
+  localOnly: number
+  cloudOnly: number
+  synced: number
+  syncing: number
+  conflict: number
+  total: number
 }
 
 declare global {

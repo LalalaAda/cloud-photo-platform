@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CreateBucketCommand, HeadBucketCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { config } from './config'
 
 let s3Client: S3Client | null = null
@@ -65,4 +65,29 @@ export async function deleteFromRustfs(objectName: string): Promise<void> {
     Bucket: config.rustfs.bucket,
     Key: objectName,
   }))
+}
+
+export interface ObjectMeta {
+  exists: boolean
+  lastModified: string | null
+}
+
+/** 检查 RustFS 中对象是否存在并获取元数据 */
+export async function headObject(objectName: string): Promise<ObjectMeta> {
+  const client = getRustfsClient()
+  try {
+    const result = await client.send(new HeadObjectCommand({
+      Bucket: config.rustfs.bucket,
+      Key: objectName,
+    }))
+    return {
+      exists: true,
+      lastModified: result.LastModified?.toISOString() ?? null,
+    }
+  } catch (err: any) {
+    if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
+      return { exists: false, lastModified: null }
+    }
+    throw err
+  }
 }

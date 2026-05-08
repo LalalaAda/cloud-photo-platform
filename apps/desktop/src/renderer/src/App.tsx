@@ -3,7 +3,10 @@ import { useMediaStore } from './stores/mediaStore'
 import { PhotoGrid } from './components/PhotoGrid'
 import { TopBar } from './components/TopBar'
 import { Lightbox } from './components/Lightbox'
+import { ConflictDialog } from './components/ConflictDialog'
 import type { Media } from '@cloud-photo/shared'
+
+const SERVER_BASE = 'http://localhost:3001'
 
 export default function App() {
   const { files, scanDirectory, rescanCurrentDir, removeFiles, loading, error, watching } = useMediaStore()
@@ -11,6 +14,8 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [conflictCount, setConflictCount] = useState(0)
+  const [showConflicts, setShowConflicts] = useState(false)
   const dragCounter = useRef(0)
 
   const handleOpenFolder = useCallback(async () => {
@@ -55,17 +60,42 @@ export default function App() {
     }
   }, [files, selectedIds])
 
+  /** 获取同步状态（含冲突数） */
+  const fetchSyncStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${SERVER_BASE}/api/sync/status`)
+      if (!res.ok) return
+      const data = await res.json()
+      setConflictCount(data.conflict ?? 0)
+    } catch {
+      // 服务未运行时忽略
+    }
+  }, [])
+
   /** 同步到云端 */
   const handleSyncToCloud = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/sync/status')
+      const res = await fetch(`${SERVER_BASE}/api/sync/status`)
       if (!res.ok) throw new Error('服务未运行')
       const data = await res.json()
-      alert(`同步状态:\n本地待上传: ${data.localOnly}\n云端待下载: ${data.cloudOnly}\n已同步: ${data.synced}`)
+      alert(
+        `同步状态:\n` +
+        `本地待上传: ${data.localOnly}\n` +
+        `云端待下载: ${data.cloudOnly}\n` +
+        `已同步: ${data.synced}\n` +
+        `冲突: ${data.conflict}`
+      )
+      // 同步后刷新冲突数
+      fetchSyncStatus()
     } catch {
       alert('无法连接同步服务，请确保后端已启动 (http://localhost:3001)')
     }
-  }, [])
+  }, [fetchSyncStatus])
+
+  /** 首次加载时获取冲突数 */
+  useEffect(() => {
+    fetchSyncStatus()
+  }, [fetchSyncStatus])
 
   /** 键盘快捷键 */
   useEffect(() => {
@@ -104,15 +134,18 @@ export default function App() {
   /** 文件变更监听（从主进程接收） */
   useEffect(() => {
     if (!window.electronAPI?.onFilesChanged) return
-    const unsubscribe = window.electronAPI.onFilesChanged((data) => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribe = window.electronAPI.onFilesChanged(() => {
       // 文件变更时延迟 2 秒后自动重新扫描
-      const timer = setTimeout(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
         rescanCurrentDir()
       }, 2000)
-      // 清理旧 timer
-      return () => clearTimeout(timer)
     })
-    return () => unsubscribe()
+    return () => {
+      unsubscribe()
+      if (timer) clearTimeout(timer)
+    }
   }, [rescanCurrentDir])
 
   /** 拖拽上传 */
@@ -189,9 +222,11 @@ export default function App() {
         onOpenFolder={handleOpenFolder}
         onRescan={rescanCurrentDir}
         onSyncToCloud={handleSyncToCloud}
+        onOpenConflicts={() => setShowConflicts(true)}
         fileCount={files.length}
         loading={loading}
         watching={watching}
+        conflictCount={conflictCount}
       />
 
       {/* 选中状态栏 */}
@@ -280,6 +315,17 @@ export default function App() {
           onNext={() => {
             const idx = files.findIndex(f => f.id === lightboxMedia.id)
             if (idx < files.length - 1) setLightboxMedia(files[idx + 1])
+          }}
+        />
+      )}
+
+      {/* 冲突处理弹窗 */}
+      {showConflicts && (
+        <ConflictDialog
+          onClose={() => {
+            setShowConflicts(false)
+            // 关闭后刷新冲突数
+            fetchSyncStatus()
           }}
         />
       )}

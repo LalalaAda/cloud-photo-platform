@@ -1,14 +1,14 @@
 # apps/server/src — Express 5 后端服务
 
 ## 概览
-Node.js Express 5 API 服务，提供 RESTful 接口、数据库 ORM（Drizzle + sql.js）、对象存储（RustFS/MinIO）。
+Node.js Express 5 API 服务，提供 RESTful 接口、数据库 ORM（Drizzle + sql.js）、对象存储（RustFS / S3 兼容）。
 
 ## 结构
 ```
 src/
 ├── index.ts          # 应用入口：中间件注册、路由挂载、启动
 ├── config.ts         # 环境变量配置中心
-├── rustfs.ts         # MinIO/S3 对象存储封装
+├── rustfs.ts         # RustFS / S3 对象存储封装
 ├── db/               # 数据库层
 │   ├── schema.ts     # Drizzle ORM 表定义
 │   ├── migrate.ts    # 迁移执行

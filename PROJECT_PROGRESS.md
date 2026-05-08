@@ -1,7 +1,7 @@
 # 云相册系统 — 项目进度报告
 
 > **生成日期**: 2026-05-08
-> **项目状态**: 第一阶段 ✅ / 第二阶段 ✅ / 第三阶段（云同步）🔄 80% / 第四阶段（UI 打磨）🌀 45% / 安全加固 ✅
+> **项目状态**: 第一阶段 ✅ / 第二阶段 ✅ / 第三阶段（云同步）🔄 90% / 第四阶段（UI 打磨）🌀 45% / 安全加固 ✅
 
 ---
 
@@ -11,11 +11,11 @@
 |------|------|------|--------|
 | **架构与基建** | Monorepo/工具链/项目结构 | ✅ 完成 | 100% |
 | **Shared 包** | 共享类型/Zod/常量/工具 | ✅ 完成 | 100% |
-| **后端 API** | Express/SQLite/MinIO/认证/路由 | ✅ 完成 | 95% |
+| **后端 API** | Express/SQLite/RustFS/认证/路由 | ✅ 完成 | 95% |
 | **桌面端框架** | Electron/Vite/React/IPC | ✅ 完成 | 90% |
 | **虚拟滚动** | 瀑布流布局/按需渲染 | ✅ 完成 | 100% |
 | **图片预览** | 灯箱组件/键盘导航/旋转 | ✅ 完成 | 100% |
-| **云同步** | 同步引擎/fs.watch/API | 🔄 部分完成 | 80% |
+| **云同步** | 同步引擎/fs.watch/冲突检测 | 🔄 部分完成 | 90% |
 | **UI 打磨** | 拖拽上传/快捷键/多选/文件监听 | 🌀 部分完成 | 45% |
 | **安全加固** | 文件魔数校验 | ✅ 完成 | 100% |
 | **性能优化** | Web Worker/内存管理 | 📅 待开始 | 0% |
@@ -60,7 +60,7 @@
 | **路由** | `src/routes/media.ts` | 媒体 CRUD, 分页, 筛选, 排序, 批量删除 |
 | **路由** | `src/routes/albums.ts` | 相册 CRUD, 媒体关联 |
 | **路由** | `src/routes/upload.ts` | 单文件上传, 分片上传初始化 |
-| **MinIO** | `src/minio.ts` | MinIO 客户端, 自动创建 bucket |
+| **对象存储** | `src/rustfs.ts` | RustFS (S3 客户端), 自动创建 bucket |
 | **配置** | `src/config.ts` | 环境变量加载 |
 | | `.env.example` | 配置模板 |
 
@@ -80,9 +80,11 @@
 | POST | `/api/upload` | 文件上传 |
 | POST | `/api/upload/init-multipart` | 分片上传初始化 |
 | POST | `/api/download` | 批量下载 ZIP (按 ID 或相册) |
-| GET | `/api/sync/status` | 同步状态统计 |
-| POST | `/api/sync/upload` | 启动本地→云端同步 |
-| POST | `/api/sync/download` | 启动云端→本地同步 |
+| GET | `/api/sync/status` | 同步状态统计 (含冲突数) |
+| POST | `/api/sync/upload` | 启动本地→云端同步 (含冲突检测) |
+| POST | `/api/sync/download` | 启动云端→本地同步 (含冲突检测) |
+| GET | `/api/sync/conflicts` | 列出所有冲突项 |
+| POST | `/api/sync/resolve` | 解决冲突 (keep_local / keep_cloud) |
 
 **验证**: ✅ 类型检查通过 / ✅ 服务启动正常 / ✅ API 端点测试通过
 
@@ -154,18 +156,23 @@
 
 | 特性 | 状态 | 说明 |
 |------|------|------|
-| MinIO 客户端集成 | ✅ 完成 | 自动连接 + 创建 bucket |
+| RustFS (S3) 客户端集成 | ✅ 完成 | 自动连接 + 创建 bucket |
 | 文件上传 API | ✅ 完成 | 单文件 + 分片初始化 |
 | 批量下载 (ZIP) | ✅ 完成 | archiver 打包流式下载 |
 | 文件魔数校验 | ✅ 完成 | 防伪装扩展名恶意上传 |
-| 同步引擎 (本地→云端) | ✅ 完成 | 自动扫描 local_only 文件上传到 RustFS |
-| 同步引擎 (云端→本地) | ✅ 完成 | 自动下载 cloud_only 文件到本地目录 |
-| 同步状态 API | ✅ 完成 | GET /api/sync/status 统计各状态数量 |
+| 同步引擎 (本地→云端) | ✅ 完成 | 自动扫描 local_only 文件上传到 RustFS，冲突检测 |
+| 同步引擎 (云端→本地) | ✅ 完成 | 自动下载 cloud_only 文件到本地目录，冲突检测 |
+| 冲突检测 | ✅ 完成 | local_only 上传前 headObject 检测云端已存在 → 标记冲突 |
+| 冲突检测 | ✅ 完成 | cloud_only 下载前检测本地已存在 → 标记冲突 |
+| 冲突解决 API | ✅ 完成 | POST /api/sync/resolve 选择保留本地或云端 |
+| 冲突查询 API | ✅ 完成 | GET /api/sync/conflicts 列出所有冲突项 |
+| 桌面端冲突 UI | ✅ 完成 | TopBar 冲突计数 + ConflictDialog 弹窗 |
+| 同步状态 API | ✅ 完成 | GET /api/sync/status 含 conflict 计数 |
 | fs.watch 文件监听 | ✅ 完成 | Electron 主进程实时监控目录变更 |
 | 桌面端同步 UI | ✅ 完成 | TopBar 同步按钮 + 实时监控指示器 |
 | 文件变更自动刷新 | ✅ 完成 | 检测到文件变化后自动重新扫描 |
-| 本地→云端冲突处理 | 📅 待优化 | 目前以本地为准覆盖云端 |
-| 云端→本地冲突处理 | 📅 待优化 | 目前以云端为准覆盖本地 |
+| 本地→云端冲突处理 | ✅ 完成 | 检测到云端已存在时标记 conflict 状态 |
+| 云端→本地冲突处理 | ✅ 完成 | 检测到本地已存在时标记 conflict 状态 |
 
 ---
 
@@ -243,7 +250,7 @@ pnpm build
 
 ## 密钥
 
-### RustFs
+### RustFS
 1. 访问密钥 bw6xiaYkVKJcBepZ5utj
 2. 密钥 dmO6AshgrBbUiEXYcFDpvuzNCjGQofkwtKM1VqR3
 

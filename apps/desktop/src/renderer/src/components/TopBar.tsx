@@ -1,15 +1,26 @@
-import { FolderOpen, Search, Grid3X3, List, LayoutGrid, RefreshCw, Upload, Eye } from 'lucide-react'
+import { FolderOpen, Search, Grid3X3, List, LayoutGrid, RefreshCw, Upload, Eye, AlertTriangle } from 'lucide-react'
 
 interface TopBarProps {
   onOpenFolder: () => void
   onRescan?: () => void
   onSyncToCloud?: () => void
+  onOpenConflicts?: () => void
   fileCount: number
   loading: boolean
   watching: boolean
+  conflictCount: number
 }
 
-export function TopBar({ onOpenFolder, onRescan, onSyncToCloud, fileCount, loading, watching }: TopBarProps) {
+export function TopBar({
+  onOpenFolder,
+  onRescan,
+  onSyncToCloud,
+  onOpenConflicts,
+  fileCount,
+  loading,
+  watching,
+  conflictCount,
+}: TopBarProps) {
   return (
     <header className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/60">
       {/* 打开文件夹按钮 */}
@@ -44,6 +55,18 @@ export function TopBar({ onOpenFolder, onRescan, onSyncToCloud, fileCount, loadi
         >
           <Upload size={14} />
           <span>同步到云端</span>
+        </button>
+      )}
+
+      {/* 冲突处理 */}
+      {conflictCount > 0 && onOpenConflicts && (
+        <button
+          onClick={onOpenConflicts}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 transition-colors text-xs text-amber-300"
+          title={`${conflictCount} 个文件存在同步冲突`}
+        >
+          <AlertTriangle size={14} />
+          <span>冲突 ({conflictCount})</span>
         </button>
       )}
 

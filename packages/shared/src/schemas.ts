@@ -4,7 +4,7 @@ import { z } from 'zod'
 export const MediaTypeSchema = z.enum(['image', 'video', 'other'])
 
 /** 媒体文件状态枚举 */
-export const MediaStatusSchema = z.enum(['local_only', 'cloud_only', 'synced', 'syncing'])
+export const MediaStatusSchema = z.enum(['local_only', 'cloud_only', 'synced', 'syncing', 'conflict'])
 
 /** 媒体文件元数据 schema */
 export const MediaSchema = z.object({
@@ -27,6 +27,15 @@ export const MediaSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   takenAt: z.string().nullable(),
+  localModifiedAt: z.string().nullable(),
+  cloudModifiedAt: z.string().nullable(),
+  syncedAt: z.string().nullable(),
+})
+
+/** 冲突解决请求 schema */
+export const ResolveConflictSchema = z.object({
+  mediaId: z.string(),
+  resolution: z.enum(['keep_local', 'keep_cloud']),
 })
 
 /** 媒体查询参数 schema */

@@ -13,7 +13,7 @@ export const media = sqliteTable('media', {
   width: integer('width'),
   height: integer('height'),
   md5: text('md5'),
-  status: text('status', { enum: ['local_only', 'cloud_only', 'synced', 'syncing'] })
+  status: text('status', { enum: ['local_only', 'cloud_only', 'synced', 'syncing', 'conflict'] })
     .notNull()
     .default('local_only'),
   isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(false),
@@ -23,6 +23,9 @@ export const media = sqliteTable('media', {
   updatedAt: text('updated_at').notNull(),
   takenAt: text('taken_at'),
   userId: text('user_id'),
+  localModifiedAt: text('local_modified_at'),
+  cloudModifiedAt: text('cloud_modified_at'),
+  syncedAt: text('synced_at'),
 })
 
 /** 相册表 */

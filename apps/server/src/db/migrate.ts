@@ -6,6 +6,7 @@ import { rawDb, saveDb } from './index'
 export function runMigrations(): void {
   const sql = rawDb()
 
+  // 主表定义（新数据库使用）
   const statements = [
     `CREATE TABLE IF NOT EXISTS media (
       id TEXT PRIMARY KEY,
@@ -19,14 +20,17 @@ export function runMigrations(): void {
       width INTEGER,
       height INTEGER,
       md5 TEXT,
-      status TEXT NOT NULL DEFAULT 'local_only' CHECK(status IN ('local_only','cloud_only','synced','syncing')),
+      status TEXT NOT NULL DEFAULT 'local_only',
       is_favorite INTEGER NOT NULL DEFAULT 0,
       rating INTEGER NOT NULL DEFAULT 0,
       tags TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       taken_at TEXT,
-      user_id TEXT
+      user_id TEXT,
+      local_modified_at TEXT,
+      cloud_modified_at TEXT,
+      synced_at TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS albums (
       id TEXT PRIMARY KEY,
@@ -61,6 +65,16 @@ export function runMigrations(): void {
 
   for (const stmt of statements) {
     sql.run(stmt)
+  }
+
+  // 迁移：为已有数据库添加新列（忽略已存在的错误）
+  const alterStatements = [
+    `ALTER TABLE media ADD COLUMN local_modified_at TEXT`,
+    `ALTER TABLE media ADD COLUMN cloud_modified_at TEXT`,
+    `ALTER TABLE media ADD COLUMN synced_at TEXT`,
+  ]
+  for (const stmt of alterStatements) {
+    try { sql.run(stmt) } catch { /* 列已存在则忽略 */ }
   }
 
   saveDb()
