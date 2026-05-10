@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
-import { readFile, unlink } from 'node:fs/promises'
-import { readdirSync, statSync, watch } from 'node:fs'
+import { readFile, unlink, readdir, stat } from 'node:fs/promises'
+import { watch } from 'node:fs'
 import { join, extname, basename } from 'node:path'
 import { IpcChannels, createMedia, getMediaTypeByExtension, generateId } from '@cloud-photo/shared'
 import type { Media, ScanResult } from '@cloud-photo/shared'
@@ -44,54 +44,74 @@ function createWindow(): void {
 
 // ====== IPC Handlers ======
 
-/** 扫描本地目录并返回媒体文件列表 */
+/** 扫描本地目录并返回媒体文件列表（异步 + 并行 stat，大目录不阻塞主进程） */
 ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Promise<ScanResult> => {
   const start = performance.now()
   const files: Media[] = []
 
-  function scanDir(currentPath: string): void {
+  const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.svg', '.avif', '.heic', '.heif']
+  const videoExts = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv']
+
+  /** 异步递归扫描，每层使用 Promise.all 并行 stat */
+  async function scanDir(currentPath: string): Promise<void> {
     let entries: string[]
     try {
-      entries = readdirSync(currentPath)
+      entries = await readdir(currentPath)
     } catch (err) {
       console.error(`[Scan] 无法读取目录: ${currentPath}`, err)
       return
     }
 
-    for (const entry of entries) {
-      const fullPath = join(currentPath, entry)
-      try {
-        const stats = statSync(fullPath)
-        if (stats.isDirectory()) {
-          scanDir(fullPath)
-        } else if (stats.isFile()) {
-          const ext = extname(entry).toLowerCase()
-          const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.svg', '.avif', '.heic', '.heif']
-          const videoExts = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv']
+    // 并行 stat 所有条目
+    const statsResults = await Promise.allSettled(
+      entries.map(async (entry) => {
+        const fullPath = join(currentPath, entry)
+        const s = await stat(fullPath)
+        return { entry, fullPath, stats: s }
+      })
+    )
 
-          if (!imageExts.includes(ext) && !videoExts.includes(ext)) continue
+    const subdirs: string[] = []
 
-          const now = new Date(stats.mtimeMs).toISOString()
-          files.push(createMedia({
-            id: generateId(),
-            localPath: fullPath,
-            filename: entry,
-            mimeType: imageExts.includes(ext) ? `image/${ext.slice(1)}` : `video/${ext.slice(1)}`,
-            mediaType: getMediaTypeByExtension(entry),
-            size: stats.size,
-            createdAt: now,
-            updatedAt: now,
-            takenAt: now,
-          }))
-        }
-      } catch (err) {
-        // 跳过无权限文件，记录调试日志
-        console.error(`[Scan] 跳过文件: ${fullPath}`, err)
+    for (const result of statsResults) {
+      if (result.status === 'rejected') {
+        // 跳过无权限文件（例如 macOS .DS_Store 等）
+        continue
       }
+
+      const { entry, fullPath, stats: s } = result.value
+
+      if (s.isDirectory()) {
+        subdirs.push(fullPath)
+        continue
+      }
+
+      if (!s.isFile()) continue
+
+      const ext = extname(entry).toLowerCase()
+      if (!imageExts.includes(ext) && !videoExts.includes(ext)) continue
+
+      const now = new Date(s.mtimeMs).toISOString()
+      files.push(createMedia({
+        id: generateId(),
+        localPath: fullPath,
+        filename: entry,
+        mimeType: imageExts.includes(ext) ? `image/${ext.slice(1)}` : `video/${ext.slice(1)}`,
+        mediaType: getMediaTypeByExtension(entry),
+        size: s.size,
+        createdAt: now,
+        updatedAt: now,
+        takenAt: now,
+      }))
+    }
+
+    // 递归扫描子目录
+    for (const subdir of subdirs) {
+      await scanDir(subdir)
     }
   }
 
-  scanDir(dirPath)
+  await scanDir(dirPath)
   const elapsed = Math.round(performance.now() - start)
 
   return { files, scannedCount: files.length, elapsed }
