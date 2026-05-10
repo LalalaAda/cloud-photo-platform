@@ -16,7 +16,7 @@
 | **虚拟滚动** | 瀑布流布局/按需渲染 | ✅ 完成 | 100% |
 | **图片预览** | 灯箱/键盘导航/旋转/多格式(HEIC/HEIF自动转JPEG) | ✅ 完成 | 100% |
 | **云同步** | 同步引擎/fs.watch/冲突检测 | 🔄 部分完成 | 90% |
-| **UI 打磨** | 拖拽上传/快捷键/多选/文件监听 | 🌀 部分完成 | 45% |
+| **UI 打磨** | 拖拽上传/快捷键/多选/文件监听/视图切换 | 🌀 部分完成 | 60% |
 | **安全加固** | 文件魔数校验 | ✅ 完成 | 100% |
 | **性能优化** | Web Worker/内存管理 | 📅 待开始 | 0% |
 | **打包部署** | electron-builder/自动更新 | 📅 待开始 | 0% |
@@ -119,9 +119,27 @@
 | `src/App.tsx` | 应用根组件, 状态管理, 布局 |
 | `src/stores/mediaStore.ts` | Zustand 状态管理 |
 | `src/components/TopBar.tsx` | 顶部工具栏 (文件夹选择/视图切换/搜索) |
-| `src/components/PhotoGrid.tsx` | **虚拟滚动瀑布流** — 核心组件 |
+| `src/components/PhotoGrid.tsx` | **虚拟滚动瀑布流/网格** — 支持 `layout` 属性切换 |
+| `src/components/ListView.tsx` | **虚拟滚动列表视图** — 文件名/大小/日期/类型 |
 | `src/components/Lightbox.tsx` | 全屏灯箱 (键盘导航/旋转/信息) |
 | `src/style.css` | TailwindCSS v4 + 自定义样式 |
+
+#### 视图模式切换
+
+TopBar 工具栏新增 3 种视图模式切换（通过 `ViewMode` 类型控制）:
+
+| 模式 | 组件 | 布局 | 说明 |
+|------|------|------|------|
+| **网格 (grid)** | `PhotoGrid` `layout="grid"` | 均匀正方形网格 | `object-cover` 居中裁剪，虚拟滚动 |
+| **瀑布流 (masonry)** | `PhotoGrid` `layout="masonry"` | 最短列分配 | 保持原始宽高比，虚拟滚动 |
+| **列表 (list)** | `ListView` | 表格行 | 文件名/缩略图/大小/日期/类型，虚拟滚动 |
+
+**实现:**
+- `ViewMode` 类型定义在 `src/types.ts`
+- `TopBar` 接收 `viewMode` + `onViewModeChange` props，按钮高亮当前模式
+- `App.tsx` 根据 `viewMode` 条件渲染对应组件
+- `PhotoGrid` 新增 `layout` prop，grid 模式使用逐行排列 + 正方形单元格，masonry 保持最短列算法
+- `ListView` 独立实现虚拟滚动列表，每行 48px，含缩略图预览
 
 #### 虚拟滚动引擎实现 (PhotoGrid.tsx)
 
@@ -129,8 +147,8 @@
 ┌──────────────────────────────────────┐
 │  ResizeObserver → 列数自适应          │
 │  ┌──────┬──────┬──────┬──────┐       │
-│  │ Col1 │ Col2 │ Col3 │ Col4 │       │  <-- 最短列分配
-│  │      │  ┌──┐│      │      │       │
+│  │ Col1 │ Col2 │ Col3 │ Col4 │       │  <-- 最短列分配 (masonry)
+│  │      │  ┌──┐│      │      │       │      逐行排列 (grid)
 │  │  ┌──┐│  │  ││  ┌──┐│  ┌──┐│       │
 │  │  │  ││  │  ││  │  ││  │  ││       │
 │  │  │  ││  └──┘│  │  ││  │  ││       │
@@ -148,6 +166,7 @@
 - 仅渲染视口 ± 缓冲区的可见元素
 - `decoding="async"` 异步图片解码
 - 骨架屏占位 → 图片加载后渐变过渡
+- 单文件 `layout` 属性控制网格/瀑布流两种布局算法
 
 **验证**: ✅ 类型检查通过 (node + web)
 
@@ -188,6 +207,7 @@
 | 键盘快捷键 (Space/Ctrl+A/Delete) | 高 | ✅ 完成 |
 | 拖拽上传文件夹 | 高 | ✅ 完成 |
 | 多选 + 批量删除 | 高 | ✅ 完成 |
+| **视图切换 (网格/瀑布流/列表)** | 高 | ✅ **完成** |
 | 玻璃拟态设计 (backdrop-filter) | 中 | 📅 待开始 |
 | EXIF 信息展示 | 中 | 📅 待开始 |
 | 剪贴板跨应用集成 | 低 | 📅 待开始 |
@@ -232,9 +252,9 @@
 | `packages/shared` | 5 | 350 |
 | `apps/server` | 10 | 620 |
 | `apps/desktop (main+preload)` | 2 | 230 |
-| `apps/desktop (renderer)` | 6 | 480 |
+| `apps/desktop (renderer)` | 7 | 560 |
 | 配置文件 | 10 | 150 |
-| **总计** | **33** | **~1830** |
+| **总计** | **34** | **~1910** |
 
 ---
 

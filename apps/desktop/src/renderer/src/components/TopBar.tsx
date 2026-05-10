@@ -1,4 +1,5 @@
-import { FolderOpen, Search, Grid3X3, List, LayoutGrid, RefreshCw, Upload, Eye, AlertTriangle } from 'lucide-react'
+import { FolderOpen, Search, Grid3X3, List, LayoutGrid, RefreshCw, Upload, AlertTriangle } from 'lucide-react'
+import type { ViewMode } from '../types'
 
 interface TopBarProps {
   onOpenFolder: () => void
@@ -9,6 +10,10 @@ interface TopBarProps {
   loading: boolean
   watching: boolean
   conflictCount: number
+  /** 当前视图模式 */
+  viewMode: ViewMode
+  /** 切换视图模式 */
+  onViewModeChange: (mode: ViewMode) => void
 }
 
 export function TopBar({
@@ -20,6 +25,8 @@ export function TopBar({
   loading,
   watching,
   conflictCount,
+  viewMode,
+  onViewModeChange,
 }: TopBarProps) {
   return (
     <header className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/60">
@@ -83,13 +90,37 @@ export function TopBar({
 
       {/* 视图切换 */}
       <div className="flex items-center gap-1 bg-zinc-800/50 rounded-lg p-0.5">
-        <button className="p-1.5 rounded-md bg-zinc-700/60 text-zinc-100" title="网格视图">
+        <button
+          onClick={() => onViewModeChange('grid')}
+          className={`p-1.5 rounded-md transition-colors ${
+            viewMode === 'grid'
+              ? 'bg-zinc-700/60 text-zinc-100'
+              : 'hover:bg-zinc-700/30 text-zinc-400'
+          }`}
+          title="网格视图"
+        >
           <Grid3X3 size={16} />
         </button>
-        <button className="p-1.5 rounded-md hover:bg-zinc-700/30 text-zinc-400" title="瀑布流视图">
+        <button
+          onClick={() => onViewModeChange('masonry')}
+          className={`p-1.5 rounded-md transition-colors ${
+            viewMode === 'masonry'
+              ? 'bg-zinc-700/60 text-zinc-100'
+              : 'hover:bg-zinc-700/30 text-zinc-400'
+          }`}
+          title="瀑布流视图"
+        >
           <LayoutGrid size={16} />
         </button>
-        <button className="p-1.5 rounded-md hover:bg-zinc-700/30 text-zinc-400" title="列表视图">
+        <button
+          onClick={() => onViewModeChange('list')}
+          className={`p-1.5 rounded-md transition-colors ${
+            viewMode === 'list'
+              ? 'bg-zinc-700/60 text-zinc-100'
+              : 'hover:bg-zinc-700/30 text-zinc-400'
+          }`}
+          title="列表视图"
+        >
           <List size={16} />
         </button>
       </div>

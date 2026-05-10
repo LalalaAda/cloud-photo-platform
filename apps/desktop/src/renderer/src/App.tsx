@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useMediaStore } from './stores/mediaStore'
 import { PhotoGrid } from './components/PhotoGrid'
+import { ListView } from './components/ListView'
 import { TopBar } from './components/TopBar'
 import { Lightbox } from './components/Lightbox'
 import { ConflictDialog } from './components/ConflictDialog'
 import type { Media } from '@cloud-photo/shared'
+import type { ViewMode } from './types'
 
 const SERVER_BASE = 'http://localhost:3001'
 
@@ -13,6 +15,7 @@ export default function App() {
   const [lightboxMedia, setLightboxMedia] = useState<Media | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [focusedId, setFocusedId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('masonry')
   const [dragOver, setDragOver] = useState(false)
   const [conflictCount, setConflictCount] = useState(0)
   const [showConflicts, setShowConflicts] = useState(false)
@@ -227,6 +230,8 @@ export default function App() {
         loading={loading}
         watching={watching}
         conflictCount={conflictCount}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
       {/* 选中状态栏 */}
@@ -274,6 +279,20 @@ export default function App() {
               <span>Delete 删除</span>
             </div>
           </div>
+        ) : viewMode === 'list' ? (
+          <ListView
+            files={files}
+            onMediaClick={handleMediaClick}
+            selectedIds={selectedIds}
+            onToggleSelect={(id) => {
+              setSelectedIds(prev => {
+                const next = new Set(prev)
+                if (next.has(id)) next.delete(id)
+                else next.add(id)
+                return next
+              })
+            }}
+          />
         ) : (
           <PhotoGrid
             files={files}
@@ -287,6 +306,7 @@ export default function App() {
                 return next
               })
             }}
+            layout={viewMode}
           />
         )}
       </main>
