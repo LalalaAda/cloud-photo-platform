@@ -7,6 +7,7 @@ import type { Media, ScanResult } from '@cloud-photo/shared'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import sharp from 'sharp'
+import heicConvert  from 'heic-convert'
 
 /** HEIC/HEIF 扩展名集合 — 需要 sharp 解码转换 */
 const HEIC_EXTENSIONS = new Set(['.heic', '.heif'])
@@ -102,14 +103,21 @@ ipcMain.handle(IpcChannels.READ_FILE_DATA_URL, async (_event, filePath: string):
     const extLower = extname(filePath).toLowerCase()
     const ext = extLower.slice(1)
 
-    // HEIC/HEIF 需要 sharp 解码后转 JPEG（浏览器不支持原生渲染）
-    if (HEIC_EXTENSIONS.has(extLower)) {
-      const jpegBuffer = await sharp(filePath).jpeg({ quality: 90 }).toBuffer()
-      return `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`
-    }
-
     const buffer = await readFile(filePath)
     const mime = ext === 'jpg' ? 'jpeg' : ext
+
+    // HEIC/HEIF 需要 sharp 解码后转 JPEG（浏览器不支持原生渲染）
+    if (HEIC_EXTENSIONS.has(extLower)) {
+      // const jpegBuffer = await sharp(filePath).toFormat('jpeg', { quality: 90 }).toBuffer()
+      const outputBuffer = await heicConvert({
+        buffer: buffer, // the HEIC file buffer
+        format: 'JPEG',      // output format
+        quality: 0.8,      // the jpeg compression quality, between 0 and 1
+      });
+      return `data:image/jpeg;base64,${outputBuffer.toString('base64')}`
+    }
+
+    
     return `data:image/${mime};base64,${buffer.toString('base64')}`
   } catch (err) {
     console.error(`[IPC] READ_FILE_DATA_URL 失败: ${filePath}`, err)

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
+  "typings": "./src/main/types.d.ts",
   "scripts": {
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
@@ -16,6 +17,7 @@
   "dependencies": {
     "@cloud-photo/shared": "workspace:*",
     "@tailwindcss/vite": "^4.1.0",
+    "heic-convert": "^2.1.0",
     "lucide-react": "^0.510.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

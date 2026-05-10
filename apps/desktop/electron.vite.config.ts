@@ -10,8 +10,11 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
         },
+        external: [
+          "sharp"
+        ]
       },
-      externalizeDeps: true,
+      externalizeDeps: false,
     },
   },
   preload: {
