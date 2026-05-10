@@ -6,6 +6,10 @@ import { IpcChannels, createMedia, getMediaTypeByExtension, generateId } from '@
 import type { Media, ScanResult } from '@cloud-photo/shared'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
+import sharp from 'sharp'
+
+/** HEIC/HEIF 扩展名集合 — 需要 sharp 解码转换 */
+const HEIC_EXTENSIONS = new Set(['.heic', '.heif'])
 
 let mainWindow: BrowserWindow | null = null
 
@@ -48,7 +52,8 @@ ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Prom
     let entries: string[]
     try {
       entries = readdirSync(currentPath)
-    } catch {
+    } catch (err) {
+      console.error(`[Scan] 无法读取目录: ${currentPath}`, err)
       return
     }
 
@@ -78,8 +83,9 @@ ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Prom
             takenAt: now,
           }))
         }
-      } catch {
-        // 跳过无权限文件
+      } catch (err) {
+        // 跳过无权限文件，记录调试日志
+        console.error(`[Scan] 跳过文件: ${fullPath}`, err)
       }
     }
   }
@@ -90,12 +96,25 @@ ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Prom
   return { files, scannedCount: files.length, elapsed }
 })
 
-/** 读取文件为 Data URL (用于预览) */
+/** 读取文件为 Data URL (用于预览) — 支持 HEIC/HEIF 自动转 JPEG */
 ipcMain.handle(IpcChannels.READ_FILE_DATA_URL, async (_event, filePath: string): Promise<string> => {
-  const buffer = await readFile(filePath)
-  const ext = extname(filePath).toLowerCase().slice(1)
-  const mime = ext === 'jpg' ? 'jpeg' : ext
-  return `data:image/${mime};base64,${buffer.toString('base64')}`
+  try {
+    const extLower = extname(filePath).toLowerCase()
+    const ext = extLower.slice(1)
+
+    // HEIC/HEIF 需要 sharp 解码后转 JPEG（浏览器不支持原生渲染）
+    if (HEIC_EXTENSIONS.has(extLower)) {
+      const jpegBuffer = await sharp(filePath).jpeg({ quality: 90 }).toBuffer()
+      return `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`
+    }
+
+    const buffer = await readFile(filePath)
+    const mime = ext === 'jpg' ? 'jpeg' : ext
+    return `data:image/${mime};base64,${buffer.toString('base64')}`
+  } catch (err) {
+    console.error(`[IPC] READ_FILE_DATA_URL 失败: ${filePath}`, err)
+    throw new Error(`无法读取文件: ${filePath}`)
+  }
 })
 
 /** 删除本地文件 */

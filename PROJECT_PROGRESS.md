@@ -1,7 +1,7 @@
 # 云相册系统 — 项目进度报告
 
-> **生成日期**: 2026-05-08
-> **项目状态**: 第一阶段 ✅ / 第二阶段 ✅ / 第三阶段（云同步）🔄 90% / 第四阶段（UI 打磨）🌀 45% / 安全加固 ✅
+> **生成日期**: 2026-05-10
+> **项目状态**: 第一阶段 ✅ / 第二阶段 ✅ / 第三阶段（云同步）🔄 90% / 第四阶段（UI 打磨 + 多格式预览）🌀 55% / 安全加固 ✅ / 错误处理增强 ✅
 
 ---
 
@@ -14,7 +14,7 @@
 | **后端 API** | Express/SQLite/RustFS/认证/路由 | ✅ 完成 | 95% |
 | **桌面端框架** | Electron/Vite/React/IPC | ✅ 完成 | 90% |
 | **虚拟滚动** | 瀑布流布局/按需渲染 | ✅ 完成 | 100% |
-| **图片预览** | 灯箱组件/键盘导航/旋转 | ✅ 完成 | 100% |
+| **图片预览** | 灯箱/键盘导航/旋转/多格式(HEIC/HEIF自动转JPEG) | ✅ 完成 | 100% |
 | **云同步** | 同步引擎/fs.watch/冲突检测 | 🔄 部分完成 | 90% |
 | **UI 打磨** | 拖拽上传/快捷键/多选/文件监听 | 🌀 部分完成 | 45% |
 | **安全加固** | 文件魔数校验 | ✅ 完成 | 100% |
@@ -94,15 +94,18 @@
 
 | 文件 | 说明 |
 |------|------|
-| `src/main/index.ts` | 窗口管理, IPC 处理器, 文件系统操作 |
+| `src/main/index.ts` | 窗口管理, IPC 处理器, 文件系统操作, **sharp 多格式解码** |
 | `src/preload/index.ts` | contextBridge API 暴露 |
+| `electron.vite.config.ts` | electron-vite 配置, **main 进程 externalize deps (支持原生模块)** |
+
+**依赖:** `sharp` 0.34.5 — HEIC/HEIF 解码转 JPEG（libvips + libheif 后端）
 
 **IPC 通道:**
 
 | 通道 | 说明 |
 |------|------|
 | `scan:directory` | 递归扫描目录, 过滤图片/视频 |
-| `file:readDataUrl` | 读取文件为 Data URL (缩略图/预览) |
+| `file:readDataUrl` | 读取文件为 Data URL (缩略图/预览) **支持 HEIC/HEIF 自动转 JPEG** |
 | `file:delete` | 删除本地文件 |
 | `file:openPicker` | 系统文件选择器 |
 | `file:openDirPicker` | 系统目录选择器 |
@@ -205,14 +208,20 @@
 
 ## 🔧 技术债务 & 改进项
 
-| 问题 | 严重度 | 说明 |
-|------|--------|------|
-| 缺少单元测试 | 高 | routes, middleware, utils 均无测试 |
-| 缺少 E2E 测试 | 中 | Electron 应用需要 Playwright 测试 |
-| 缺少 CI 配置 | 中 | 无 GitHub Actions |
-| 错误处理粗粒度 | 中 | 部分 catch 仅打印 error，无结构化错误响应 |
-| 大文件扫描性能 | 中 | 同步递归扫描，大目录可能阻塞主进程 |
-| sql.js 无 WAL 模式 | 低 | sql.js 不支持 WAL，大并发读写需关注 |
+| 问题 | 严重度 | 说明 | 状态 |
+|------|--------|------|------|
+| 缺少单元测试 | 高 | routes, middleware, utils 均无测试 | 📅 待开始 |
+| 缺少 E2E 测试 | 中 | Electron 应用需要 Playwright 测试 | 📅 待开始 |
+| 缺少 CI 配置 | 中 | 无 GitHub Actions | 📅 待开始 |
+| 大文件扫描性能 (异步) | 中 | 同步递归扫描，大目录可能阻塞主进程 | 📅 待开始 |
+| sql.js 无 WAL 模式 | 低 | sql.js 不支持 WAL，大并发读写需关注 | 📅 待开始 |
+
+### ✅ 已修复的改进项
+
+| 问题 | 说明 | 修复内容 |
+|------|------|----------|
+| 错误处理粗粒度 | catch 块缺少日志上下文 | 所有 IPC handler 添加结构化 `console.error` 日志（含路径/错误信息） |
+| HEIC/HEIF 预览支持 | 浏览器不支持原生 HEIC 渲染 | `READ_FILE_DATA_URL` 通过 sharp 自动解码 HEIC/HEIF 为 JPEG (quality=90) |
 
 ---
 
@@ -222,10 +231,10 @@
 |------|---------|--------------|
 | `packages/shared` | 5 | 350 |
 | `apps/server` | 10 | 620 |
-| `apps/desktop (main+preload)` | 2 | 220 |
+| `apps/desktop (main+preload)` | 2 | 230 |
 | `apps/desktop (renderer)` | 6 | 480 |
 | 配置文件 | 10 | 150 |
-| **总计** | **33** | **~1820** |
+| **总计** | **33** | **~1830** |
 
 ---
 

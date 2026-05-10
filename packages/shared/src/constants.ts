@@ -14,7 +14,7 @@ export const MEDIA_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VIDEO_EXTENSION
 /** 图片 MIME 类型集合 */
 export const IMAGE_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp',
-  'image/tiff', 'image/svg+xml', 'image/avif',
+  'image/tiff', 'image/svg+xml', 'image/avif', 'image/heic', 'image/heif',
 ])
 
 /** 虚拟滚动配置 */

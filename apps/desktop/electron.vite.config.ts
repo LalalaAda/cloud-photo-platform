@@ -11,7 +11,7 @@ export default defineConfig({
           index: resolve(__dirname, 'src/main/index.ts'),
         },
       },
-      externalizeDeps: false,
+      externalizeDeps: true,
     },
   },
   preload: {
