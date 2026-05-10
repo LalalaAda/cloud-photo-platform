@@ -9,6 +9,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },

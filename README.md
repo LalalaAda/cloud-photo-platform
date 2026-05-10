@@ -66,6 +66,9 @@ cloud-photo-platform/
 ```bash
 # 安装依赖
 pnpm install
+# 遇到electron安装失败的情况下 
+删除 ./apps/desktop/node_modules/electron/dist
+然后重新 node ./apps/desktop/node_modules/electron/install.js
 
 # 类型检查
 pnpm typecheck
