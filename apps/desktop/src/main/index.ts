@@ -154,12 +154,40 @@ ipcMain.handle(IpcChannels.READ_THUMBNAIL_DATA_URL, async (_event, filePath: str
     let result: string
 
     if (imageExts.includes(extLower)) {
-      const resized = await sharp(filePath)
-        .rotate()
-        .resize({ width: 100, withoutEnlargement: true })
-        .toFormat('webp', { quality: 60 })
-        .toBuffer()
-      result = `data:image/webp;base64,${resized.toString('base64')}`
+      // JPEG 三级降级链: CMYK → 损坏 EXIF → 原始 base64
+      if (extLower === '.jpg' || extLower === '.jpeg') {
+        try {
+          // Level 1: 全流水线 + 色彩空间转换 + EXIF 旋转
+          const resized = await sharp(filePath)
+            .rotate()
+            .toColorspace('srgb')
+            .resize({ width: 100, withoutEnlargement: true })
+            .toFormat('webp', { quality: 60 })
+            .toBuffer()
+          result = `data:image/webp;base64,${resized.toString('base64')}`
+        } catch {
+          try {
+            // Level 2: 跳过 .rotate() — 处理损坏的 EXIF 方向数据
+            const resized = await sharp(filePath)
+              .toColorspace('srgb')
+              .resize({ width: 100, withoutEnlargement: true })
+              .toFormat('webp', { quality: 60 })
+              .toBuffer()
+            result = `data:image/webp;base64,${resized.toString('base64')}`
+          } catch {
+            // Level 3: 原始 JPEG base64 — 浏览器可能渲染出 sharp 无法解码的文件
+            const rawBuf = await readFile(filePath)
+            result = `data:image/jpeg;base64,${rawBuf.toString('base64')}`
+          }
+        }
+      } else {
+        const resized = await sharp(filePath)
+          .rotate()
+          .resize({ width: 100, withoutEnlargement: true })
+          .toFormat('webp', { quality: 60 })
+          .toBuffer()
+        result = `data:image/webp;base64,${resized.toString('base64')}`
+      }
     } else if (HEIC_EXTENSIONS.has(extLower)) {
       const buffer = await readFile(filePath)
       const converted = await heicConvert({ buffer, format: 'JPEG', quality: 0.6 })

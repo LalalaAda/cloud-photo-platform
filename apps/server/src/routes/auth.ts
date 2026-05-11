@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { signToken } from '../middleware/auth'
 import { RegisterSchema, LoginSchema } from '@cloud-photo/shared'
 import { generateId } from '@cloud-photo/shared'
+import { ZodError } from 'zod'
 
 const router = Router()
 
@@ -45,7 +46,11 @@ router.post('/register', async (req, res) => {
       user: { id: user.id, username: user.username, email: user.email, createdAt: user.createdAt },
     })
   } catch (err) {
-    console.error('[Auth] Register error:', err)
+    if (err instanceof ZodError) {
+      res.status(400).json({ error: 'Invalid registration data', details: err.errors })
+      return
+    }
+    console.error('[Auth] Register error:', (err as Error).message)
     res.status(400).json({ error: 'Invalid registration data' })
   }
 })
@@ -78,7 +83,11 @@ router.post('/login', async (req, res) => {
       user: { id: user.id, username: user.username, email: user.email, avatar: user.avatar, createdAt: user.createdAt },
     })
   } catch (err) {
-    console.error('[Auth] Login error:', err)
+    if (err instanceof ZodError) {
+      res.status(400).json({ error: 'Invalid login data', details: err.errors })
+      return
+    }
+    console.error('[Auth] Login error:', (err as Error).message)
     res.status(400).json({ error: 'Invalid login data' })
   }
 })

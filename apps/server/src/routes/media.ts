@@ -110,12 +110,13 @@ router.patch('/:id', authMiddleware, async (req, res) => {
       updates[field] = req.body[field]
     }
   }
-  updates.updatedAt = new Date().toISOString()
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: 'No valid fields to update' })
     return
   }
+
+  updates.updatedAt = new Date().toISOString()
 
   db.update(schema.media)
     .set(updates)

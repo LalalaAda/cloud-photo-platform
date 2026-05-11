@@ -10,3 +10,6 @@ Thumbs.db
 apps/server/data/
 .sisyphus/
 out/
+e2e/node_modules/
+e2e/playwright-report/
+e2e/test-results/

@@ -8,7 +8,11 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "clean": "turbo clean"
+    "clean": "turbo clean",
+    "test": "turbo test",
+    "test:e2e": "pnpm --filter @cloud-photo/e2e test",
+    "test:e2e:server": "pnpm --filter @cloud-photo/e2e test:server",
+    "test:e2e:desktop": "pnpm --filter @cloud-photo/e2e test:desktop"
   },
   "devDependencies": {
     "turbo": "^2.5.0",
