@@ -18,7 +18,7 @@ export default defineConfig({
   workers: 1,
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ['html', { outputFolder: 'playwright-report' }],
   ],
 
   globalSetup: resolve(__dirname, 'global-setup.ts'),

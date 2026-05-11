@@ -1,4 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test'
+import path from 'path'
 
 /**
  * Electron 桌面端启动测试
@@ -11,11 +12,11 @@ import { test, expect, _electron as electron } from '@playwright/test'
 test.describe('Desktop App Startup', () => {
   test('应用应启动并显示主窗口', async () => {
     test.skip(!!process.env.CI, '需要图形环境，CI 中跳过')
-
     const electronApp = await electron.launch({
-      args: ['.'],
-      cwd: new URL('../../apps/desktop', import.meta.url).pathname,
+      args: ['./out/main/index.js'],
+      cwd: path.resolve(import.meta.dirname,'../../apps/desktop'),
     })
+    debugger
 
     try {
       const window = await electronApp.firstWindow()
