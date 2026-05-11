@@ -11,10 +11,17 @@ interface PhotoGridProps {
   layout?: 'masonry' | 'grid'
 }
 
-/** 估算列数 */
-function calcColumnCount(containerWidth: number): number {
-  const count = Math.floor((containerWidth + MASONRY.GAP) / (MASONRY.COLUMN_WIDTH + MASONRY.GAP))
-  return Math.max(MASONRY.MIN_COLUMNS, Math.min(count, MASONRY.MAX_COLUMNS))
+/** 列数范围: grid 多列(6-9列), masonry 少列(4-6列) */
+const GRID_COL_RANGE = { min: 6, max: 9 }
+const MASONRY_COL_RANGE = { min: 4, max: 6 }
+
+/** 响应式计算列数 — 容器越宽列越多, 在 min~max 范围内 */
+function calcColumnCount(containerWidth: number, range: { min: number; max: number }): number {
+  const WIDTH_MIN = 800
+  const WIDTH_MAX = 1600
+  const ratio = Math.min(1, Math.max(0, (containerWidth - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)))
+  const count = Math.round(range.min + ratio * (range.max - range.min))
+  return Math.max(range.min, Math.min(count, range.max))
 }
 
 /** 单个缩略图项 — 使用缩略图 IPC + async decode 优化 */
@@ -184,24 +191,14 @@ export function PhotoGrid({ files, onMediaClick, selectedIds, onToggleSelect, la
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(800)
   const [scrollTop, setScrollTop] = useState(0)
-  const [rowHeights, setRowHeights] = useState<Map<number, number>>(new Map())
 
-  const colCount = calcColumnCount(containerWidth)
+  // 根据 view 模式选择列数范围, 响应式计算列数 (百分比列宽)
+  const colRange = layout === 'grid' ? GRID_COL_RANGE : MASONRY_COL_RANGE
+  const colCount = calcColumnCount(containerWidth, colRange)
   const colWidth = Math.floor((containerWidth - (colCount - 1) * MASONRY.GAP) / colCount)
 
-  // 瀑布流 / 网格布局计算
+  // 瀑布流：将每张图分配到当前最矮的列
   const { columnItems, columnHeights, totalHeight } = useMemo(() => {
-    if (layout === 'grid') {
-      // 均匀网格：逐行排列，每个格子等高（正方形）
-      const rows = Math.ceil(files.length / colCount)
-      return {
-        columnItems: [],
-        columnHeights: [],
-        totalHeight: rows * (colWidth + MASONRY.GAP),
-      }
-    }
-
-    // 瀑布流：将每张图分配到当前最矮的列
     const cols: Media[][] = Array.from({ length: colCount }, () => [])
     const heights = new Array(colCount).fill(0)
 
@@ -217,23 +214,10 @@ export function PhotoGrid({ files, onMediaClick, selectedIds, onToggleSelect, la
       columnHeights: heights,
       totalHeight: Math.max(...heights, 0),
     }
-  }, [files, colCount, colWidth, layout])
+  }, [files, colCount, colWidth])
 
   // 合并数据为有序位置列表，用于虚拟滚动
   const positionedItems = useMemo(() => {
-    if (layout === 'grid') {
-      // 网格模式：逐行从左到右排列，所有项等高（正方形）
-      const cellSize = colWidth + MASONRY.GAP
-      return files.map((file, idx) => ({
-        file,
-        x: (idx % colCount) * cellSize,
-        y: Math.floor(idx / colCount) * cellSize,
-        w: colWidth,
-        h: colWidth, // 正方形网格
-      }))
-    }
-
-    // 瀑布流模式
     const positions: Array<{ file: Media; x: number; y: number; w: number; h: number }> = []
     const tops = new Array(colCount).fill(0)
     const colIdx = new Array(colCount).fill(0)
@@ -264,7 +248,7 @@ export function PhotoGrid({ files, onMediaClick, selectedIds, onToggleSelect, la
     }
 
     return positions
-  }, [files, colCount, colWidth, columnItems, layout])
+  }, [files, colCount, colWidth, columnItems])
 
   // 视口计算
   const viewportHeight = containerRef.current?.clientHeight ?? 800
