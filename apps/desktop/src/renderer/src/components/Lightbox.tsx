@@ -1,31 +1,65 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight, RotateCw, Download, Star, Info } from 'lucide-react'
-import { formatFileSize, isImageFile } from '@cloud-photo/shared'
 import type { Media } from '@cloud-photo/shared'
+import { formatFileSize } from '@cloud-photo/shared'
 
 interface LightboxProps {
   media: Media
   onClose: () => void
   onPrev: () => void
   onNext: () => void
+  /** 所有文件列表 (用于预加载) */
+  allFiles?: Media[]
 }
 
-export function Lightbox({ media, onClose, onPrev, onNext }: LightboxProps) {
+export function Lightbox({ media, onClose, onPrev, onNext, allFiles }: LightboxProps) {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [rotation, setRotation] = useState(0)
   const [showInfo, setShowInfo] = useState(false)
   const [loading, setLoading] = useState(true)
+  const imgRef = useRef<HTMLImageElement>(null)
 
   useEffect(() => {
     if (!media.localPath || !window.electronAPI) return
     setLoading(true)
 
     window.electronAPI.readFileDataUrl(media.localPath).then((url) => {
-      setDataUrl(url)
-      setLoading(false)
-      setRotation(0)
+      // 使用 Image.decode() 异步解码, 不阻塞主线程
+      const img = new Image()
+      img.src = url
+      if (img.decode) {
+        img.decode().then(() => {
+          setDataUrl(url)
+          setLoading(false)
+          setRotation(0)
+        }).catch(() => {
+          // 解码失败: 降级直接显示
+          setDataUrl(url)
+          setLoading(false)
+          setRotation(0)
+        })
+      } else {
+        setDataUrl(url)
+        setLoading(false)
+        setRotation(0)
+      }
     })
   }, [media.localPath, media.id])
+
+  /** 预加载相邻图片 (提升翻页流畅度) */
+  useEffect(() => {
+    if (!allFiles || !window.electronAPI) return
+    const idx = allFiles.findIndex(f => f.id === media.id)
+    const preloadIndices = [idx - 1, idx + 1].filter(i => i >= 0 && i < allFiles.length)
+
+    for (const pi of preloadIndices) {
+      const nextPath = allFiles[pi].localPath
+      if (nextPath) {
+        // 使用缩略图 IPC 触发缓存预热 (较小的传输量, 更快完成)
+        window.electronAPI.readThumbnailDataUrl(nextPath).catch(() => {})
+      }
+    }
+  }, [media.id, allFiles])
 
   // 键盘快捷键
   useEffect(() => {
@@ -123,11 +157,13 @@ export function Lightbox({ media, onClose, onPrev, onNext }: LightboxProps) {
           <div className="w-16 h-16 border-2 border-zinc-600 border-t-blue-500 rounded-full animate-spin" />
         ) : dataUrl ? (
           <img
+            ref={imgRef}
             src={dataUrl}
             alt={media.filename}
             className="max-w-full max-h-full object-contain transition-transform duration-200"
             style={{ transform: `rotate(${rotation}deg)` }}
             decoding="async"
+            fetchPriority="high"
           />
         ) : (
           <div className="text-zinc-500 text-center">

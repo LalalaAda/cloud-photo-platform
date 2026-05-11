@@ -126,6 +126,8 @@ export const IpcChannels = {
   READ_FILE_DATA_URL: 'file:readDataUrl',
   /** 删除本地文件 */
   DELETE_LOCAL_FILE: 'file:delete',
+  /** 读取文件为缩略图 Data URL (自动缩小) */
+  READ_THUMBNAIL_DATA_URL: 'file:readThumbnailDataUrl',
   /** 获取应用路径 */
   GET_APP_PATH: 'app:getPath',
   /** 写入剪贴板 */

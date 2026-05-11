@@ -12,6 +12,24 @@ import heicConvert  from 'heic-convert'
 /** HEIC/HEIF 扩展名集合 — 需要 sharp 解码转换 */
 const HEIC_EXTENSIONS = new Set(['.heic', '.heif'])
 
+/** 缩略图 LRU 缓存 (进程内热缓存, 避免重复 sharp 处理) */
+const thumbnailLRU = new Map<string, string>()
+const THUMBNAIL_LRU_MAX = 500
+
+/** 缓存键计算: 基于文件 size + mtimeMs 的 MD5 前缀, 文件变化时自动失效 */
+function computeCacheKey(size: number, mtimeMs: number): string {
+  return createHash('md5').update(`${size}-${Math.floor(mtimeMs)}`).digest('hex').slice(0, 12)
+}
+
+/** LRU set: 缓存达到上限时淘汰最早条目 */
+function lruSet(cache: Map<string, string>, key: string, value: string): void {
+  if (cache.size >= THUMBNAIL_LRU_MAX) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
+  cache.set(key, value)
+}
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
@@ -92,6 +110,7 @@ ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Prom
       if (!imageExts.includes(ext) && !videoExts.includes(ext)) continue
 
       const now = new Date(s.mtimeMs).toISOString()
+      const cacheKey = computeCacheKey(s.size, s.mtimeMs)
       files.push(createMedia({
         id: generateId(),
         localPath: fullPath,
@@ -99,6 +118,9 @@ ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Prom
         mimeType: imageExts.includes(ext) ? `image/${ext.slice(1)}` : `video/${ext.slice(1)}`,
         mediaType: getMediaTypeByExtension(entry),
         size: s.size,
+        width: null,
+        height: null,
+        md5: cacheKey,
         createdAt: now,
         updatedAt: now,
         takenAt: now,
@@ -115,6 +137,48 @@ ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Prom
   const elapsed = Math.round(performance.now() - start)
 
   return { files, scannedCount: files.length, elapsed }
+})
+
+/**
+ * 读取文件为缩略图 Data URL — 内存 LRU 缓存 + sharp 缩小
+ * 同一 session 内重复请求直接命中 LRU 缓存, 避免重复 sharp 解码
+ */
+ipcMain.handle(IpcChannels.READ_THUMBNAIL_DATA_URL, async (_event, filePath: string): Promise<string> => {
+  // LRU 热缓存命中
+  const cached = thumbnailLRU.get(filePath)
+  if (cached !== undefined) return cached
+
+  try {
+    const extLower = extname(filePath).toLowerCase()
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.avif']
+    let result: string
+
+    if (imageExts.includes(extLower)) {
+      const resized = await sharp(filePath)
+        .rotate()
+        .resize({ width: 100, withoutEnlargement: true })
+        .toFormat('webp', { quality: 60 })
+        .toBuffer()
+      result = `data:image/webp;base64,${resized.toString('base64')}`
+    } else if (HEIC_EXTENSIONS.has(extLower)) {
+      const buffer = await readFile(filePath)
+      const converted = await heicConvert({ buffer, format: 'JPEG', quality: 0.6 })
+      const resized = await sharp(converted)
+        .resize({ width: 100, withoutEnlargement: true })
+        .toFormat('webp', { quality: 60 })
+        .toBuffer()
+      result = `data:image/webp;base64,${resized.toString('base64')}`
+    } else {
+      result = ''
+    }
+
+    // 存入 LRU 热缓存
+    if (result) lruSet(thumbnailLRU, filePath, result)
+    return result
+  } catch (err) {
+    console.error(`[IPC] READ_THUMBNAIL_DATA_URL 失败: ${filePath}`, err)
+    return ''
+  }
 })
 
 /** 读取文件为 Data URL (用于预览) — 支持 HEIC/HEIF 自动转 JPEG */

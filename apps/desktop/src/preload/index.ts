@@ -11,6 +11,10 @@ const api = {
   readFileDataUrl: (filePath: string): Promise<string> =>
     ipcRenderer.invoke(IpcChannels.READ_FILE_DATA_URL, filePath),
 
+  /** 读取文件为缩略图 Data URL (sharp 缩小, 大幅降低 IPC 传输量) */
+  readThumbnailDataUrl: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke(IpcChannels.READ_THUMBNAIL_DATA_URL, filePath),
+
   /** 删除本地文件 */
   deleteLocalFile: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.DELETE_LOCAL_FILE, filePath),

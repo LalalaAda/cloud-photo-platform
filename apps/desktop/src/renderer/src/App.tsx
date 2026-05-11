@@ -217,8 +217,6 @@ export default function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* 标题栏区域 (预留拖拽区域) */}
-      <div className="drag-region h-10 flex-shrink-0" />
 
       {/* 顶部工具栏 */}
       <TopBar
@@ -336,6 +334,7 @@ export default function App() {
             const idx = files.findIndex(f => f.id === lightboxMedia.id)
             if (idx < files.length - 1) setLightboxMedia(files[idx + 1])
           }}
+          allFiles={files}
         />
       )}
 

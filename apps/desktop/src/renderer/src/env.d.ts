@@ -22,6 +22,8 @@ declare global {
     electronAPI: {
       scanDirectory: (dirPath: string) => Promise<ScanResult>
       readFileDataUrl: (filePath: string) => Promise<string>
+      /** 读取缩略图 Data URL (sharp 缩小, 大幅降低 IPC 传输量) */
+      readThumbnailDataUrl: (filePath: string) => Promise<string>
       deleteLocalFile: (filePath: string) => Promise<boolean>
       openFilePicker: () => Promise<string[] | null>
       openDirPicker: () => Promise<string | null>

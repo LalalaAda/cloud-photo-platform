@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Media, ScanResult } from '@cloud-photo/shared'
+import { clearCache } from './thumbnailCache'
 
 interface MediaState {
   /** 当前目录下的所有媒体文件 */
@@ -41,6 +42,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 
   scanDirectory: async (dirPath: string) => {
     set({ loading: true, error: null })
+    // 切换到新目录时清空缩略图缓存
+    clearCache()
     try {
       const result: ScanResult = await window.electronAPI.scanDirectory(dirPath)
       set({
