@@ -7,15 +7,24 @@
  *   L3: IPC → Main Process sharp 生成 (回退)
  *
  * 缓存键: media.md5 (基于文件 size + mtime 的哈希, 文件变化时自动失效)
+ *
+ * 存储格式: 使用 raw Uint8Array + MIME, 渲染端通过 createObjectURL 转为 Blob URL
+ *   (相比旧版 base64 节省 ~33% 传输体积, 避免 base64 解码开销)
  */
 import type { Media } from '@cloud-photo/shared'
+
+/** 缓存条目: 二进制数据 + MIME 类型 */
+export interface ThumbnailItem {
+  data: Uint8Array
+  mime: string
+}
 
 // ====== 内存 LRU 缓存 ======
 
 const MEMORY_CACHE_MAX = 800
-const memoryCache = new Map<string, string>()
+const memoryCache = new Map<string, ThumbnailItem>()
 
-function memoryGet(key: string): string | undefined {
+function memoryGet(key: string): ThumbnailItem | undefined {
   const val = memoryCache.get(key)
   if (val !== undefined) {
     // 移到末尾 (LRU)
@@ -25,7 +34,7 @@ function memoryGet(key: string): string | undefined {
   return val
 }
 
-function memorySet(key: string, dataUrl: string): void {
+function memorySet(key: string, item: ThumbnailItem): void {
   if (memoryCache.has(key)) {
     memoryCache.delete(key)
   } else if (memoryCache.size >= MEMORY_CACHE_MAX) {
@@ -33,7 +42,7 @@ function memorySet(key: string, dataUrl: string): void {
     const oldest = memoryCache.keys().next().value
     if (oldest !== undefined) memoryCache.delete(oldest)
   }
-  memoryCache.set(key, dataUrl)
+  memoryCache.set(key, item)
 }
 
 // ====== Web Worker 通信 ======
@@ -112,7 +121,7 @@ function postToWorker(type: string, payload: any): Promise<any> {
  * 获取缩略图: L1 内存 → L2 IndexedDB → null
  * 调用方在得到 null 后应发起 IPC 获取, 然后通过 setThumbnail 回填
  */
-export async function getThumbnail(media: Media): Promise<string | null> {
+export async function getThumbnail(media: Media): Promise<ThumbnailItem | null> {
   const key = media.md5
   if (!key) return null
 
@@ -124,8 +133,9 @@ export async function getThumbnail(media: Media): Promise<string | null> {
   try {
     const data = await postToWorker('get', { cacheKey: key })
     if (data) {
-      memorySet(key, data)
-      return data
+      const item: ThumbnailItem = { data: new Uint8Array(data.data), mime: data.mime }
+      memorySet(key, item)
+      return item
     }
   } catch {
     // Worker 不可用, 继续 L3
@@ -137,15 +147,24 @@ export async function getThumbnail(media: Media): Promise<string | null> {
 /**
  * 存入缩略图缓存: L1 内存 + L2 IndexedDB
  */
-export async function setThumbnail(media: Media, dataUrl: string): Promise<void> {
+export async function setThumbnail(media: Media, item: ThumbnailItem): Promise<void> {
   const key = media.md5
-  if (!key || !dataUrl) return
+  if (!key || !item) return
 
   // L1: 内存
-  memorySet(key, dataUrl)
+  memorySet(key, item)
 
   // L2: IndexedDB (fire-and-forget, 不阻塞 UI)
-  postToWorker('set', { cacheKey: key, dataUrl }).catch(() => {})
+  postToWorker('set', { cacheKey: key, data: item.data, mime: item.mime }).catch(() => {})
+}
+
+/**
+ * 将 ThumbnailItem 转为 Blob URL
+ * 调用方负责在适当时机 URL.revokeObjectURL()
+ */
+export function thumbnailToBlobUrl(item: ThumbnailItem): string {
+  const blob = new Blob([item.data], { type: item.mime })
+  return URL.createObjectURL(blob)
 }
 
 /**

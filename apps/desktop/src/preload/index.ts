@@ -7,12 +7,12 @@ const api = {
   scanDirectory: (dirPath: string): Promise<ScanResult> =>
     ipcRenderer.invoke(IpcChannels.SCAN_DIRECTORY, dirPath),
 
-  /** 读取文件为 Data URL */
-  readFileDataUrl: (filePath: string): Promise<string> =>
+  /** 读取文件为 raw Buffer + MIME (渲染端通过 createObjectURL 转为 Blob URL) */
+  readFileDataUrl: (filePath: string): Promise<{ data: Uint8Array; mime: string } | null> =>
     ipcRenderer.invoke(IpcChannels.READ_FILE_DATA_URL, filePath),
 
-  /** 读取文件为缩略图 Data URL (sharp 缩小, 大幅降低 IPC 传输量) */
-  readThumbnailDataUrl: (filePath: string): Promise<string> =>
+  /** 读取缩略图为 raw Buffer + MIME (sharp 缩小, IPC 传输量比 base64 低 ~33%) */
+  readThumbnailDataUrl: (filePath: string): Promise<{ data: Uint8Array; mime: string } | null> =>
     ipcRenderer.invoke(IpcChannels.READ_THUMBNAIL_DATA_URL, filePath),
 
   /** 删除本地文件 */

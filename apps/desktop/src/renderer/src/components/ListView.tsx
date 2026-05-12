@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { formatFileSize } from '@cloud-photo/shared'
 import type { Media } from '@cloud-photo/shared'
-import { getThumbnail, setThumbnail } from '../stores/thumbnailCache'
+import { getThumbnail, setThumbnail, thumbnailToBlobUrl } from '../stores/thumbnailCache'
+import type { ThumbnailItem } from '../stores/thumbnailCache'
 
 interface ListViewProps {
   files: Media[]
@@ -128,44 +129,80 @@ export function ListView({ files, onMediaClick, selectedIds, onToggleSelect }: L
   )
 }
 
-/** 列表缩略图预览 — 使用缩略图 IPC 减少 98% 数据传输量 */
+/** 列表缩略图预览 — 使用 Blob URL + 缩略图 IPC 减少 98% 数据传输量 */
 function ThumbnailPreview({ media }: { media: Media }) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null)
+  const [blobUrl, setBlobUrlState] = useState<string | null>(null)
+  const blobUrlRef = useRef<string | null>(null)
+
+  /** 安全设置 Blob URL: 自动撤销旧 URL */
+  const setBlobUrl = useCallback((url: string | null) => {
+    if (blobUrlRef.current && blobUrlRef.current !== url) {
+      URL.revokeObjectURL(blobUrlRef.current)
+    }
+    blobUrlRef.current = url
+    setBlobUrlState(url)
+  }, [])
+
+  /** 组件卸载时撤销 Blob URL */
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current)
+        blobUrlRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!media.localPath || !window.electronAPI) return
     let cancelled = false
+    let localBlobUrl: string | null = null
+
+    /** 将 ThumbnailItem 转为 Blob URL 并设置 */
+    function applyItem(item: ThumbnailItem) {
+      if (cancelled) return
+      const url = thumbnailToBlobUrl(item)
+      localBlobUrl = url
+      setBlobUrl(url)
+    }
 
     // L1+L2: 检查缓存 (内存 LRU → IndexedDB)
-    getThumbnail(media).then((cachedUrl) => {
+    getThumbnail(media).then((cached) => {
       if (cancelled) return
-      if (cachedUrl) {
-        setDataUrl(cachedUrl)
+      if (cached) {
+        applyItem(cached)
         return
       }
 
       // L3: 通过 IPC 请求缩略图
-      window.electronAPI.readThumbnailDataUrl(media.localPath as string).then((url) => {
+      window.electronAPI.readThumbnailDataUrl(media.localPath).then((result) => {
         if (cancelled) return
-        if (url) {
-          // 异步回填缓存
-          setThumbnail(media, url)
-          setDataUrl(url)
+        if (result) {
+          const item: ThumbnailItem = { data: result.data, mime: result.mime }
+          setThumbnail(media, item)
+          applyItem(item)
         } else {
-          window.electronAPI.readFileDataUrl(media.localPath as string).then((fallbackUrl) => {
-            if (!cancelled) setDataUrl(fallbackUrl)
+          window.electronAPI.readFileDataUrl(media.localPath).then((fallback) => {
+            if (cancelled || !fallback) return
+            const item: ThumbnailItem = { data: fallback.data, mime: fallback.mime }
+            applyItem(item)
           })
         }
       })
     })
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      if (localBlobUrl) {
+        URL.revokeObjectURL(localBlobUrl)
+      }
+    }
   }, [media.localPath, media.md5])
 
   return (
     <div className="w-8 h-8 rounded overflow-hidden bg-zinc-700 flex-shrink-0">
-      {dataUrl ? (
-        <img src={dataUrl} alt="" className="w-full h-full object-cover" />
+      {blobUrl ? (
+        <img src={blobUrl} alt="" className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full bg-zinc-700 animate-pulse" />
       )}

@@ -17,13 +17,19 @@ interface SyncStatusResponse {
   total: number
 }
 
+/** IPC 返回的二进制数据格式: raw Buffer + MIME, 用于 createObjectURL 转 Blob URL */
+interface ThumbnailResult {
+  data: Uint8Array
+  mime: string
+}
+
 declare global {
   interface Window {
     electronAPI: {
       scanDirectory: (dirPath: string) => Promise<ScanResult>
-      readFileDataUrl: (filePath: string) => Promise<string>
-      /** 读取缩略图 Data URL (sharp 缩小, 大幅降低 IPC 传输量) */
-      readThumbnailDataUrl: (filePath: string) => Promise<string>
+      readFileDataUrl: (filePath: string) => Promise<ThumbnailResult | null>
+      /** 读取缩略图 raw Buffer (取代旧版 base64, IPC 传输量降低 ~33%) */
+      readThumbnailDataUrl: (filePath: string) => Promise<ThumbnailResult | null>
       deleteLocalFile: (filePath: string) => Promise<boolean>
       openFilePicker: () => Promise<string[] | null>
       openDirPicker: () => Promise<string | null>

@@ -2,7 +2,7 @@
  * 图片处理 Web Worker
  *
  * 职责:
- * 1. IndexedDB 缩略图缓存管理 (持久化)
+ * 1. IndexedDB 缩略图缓存管理 (持久化, 存储 raw Uint8Array + MIME)
  * 2. OffscreenCanvas 图片压缩 (未来可扩展)
  *
  * 通信协议: { id, type, payload } → { id, type, data?, error? }
@@ -11,8 +11,10 @@
 interface CacheEntry {
   /** 缓存键: filePath::size::mtime */
   cacheKey: string
-  /** thumbnail data URL */
-  dataUrl: string
+  /** Raw thumbnail binary data */
+  data: Uint8Array
+  /** MIME type (e.g. 'image/webp') */
+  mime: string
   /** 创建时间戳 */
   createdAt: number
   /** 最近访问时间戳 (LRU) */
@@ -35,7 +37,7 @@ interface WorkerResponse {
 // ====== IndexedDB ======
 
 const DB_NAME = 'cloud-photo-thumbnails'
-const DB_VERSION = 1
+const DB_VERSION = 2 // v2: 存储格式从 base64 字符串改为 Uint8Array + MIME
 const STORE_NAME = 'thumbnails'
 const MAX_CACHE_ENTRIES = 3000
 const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 天
@@ -48,10 +50,17 @@ function openDB(): Promise<IDBDatabase> {
 
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
-    request.onupgradeneeded = () => {
-      const store = request.result.createObjectStore(STORE_NAME, { keyPath: 'cacheKey' })
-      store.createIndex('lastAccessed', 'lastAccessed', { unique: false })
-      store.createIndex('createdAt', 'createdAt', { unique: false })
+    request.onupgradeneeded = (event) => {
+      // v2: 删除旧 store (base64 字符串格式), 重建为 Uint8Array + MIME 格式
+      if (event.oldVersion < 2) {
+        const result = request.result
+        if (result.objectStoreNames.contains(STORE_NAME)) {
+          result.deleteObjectStore(STORE_NAME)
+        }
+        const store = result.createObjectStore(STORE_NAME, { keyPath: 'cacheKey' })
+        store.createIndex('lastAccessed', 'lastAccessed', { unique: false })
+        store.createIndex('createdAt', 'createdAt', { unique: false })
+      }
     }
 
     request.onsuccess = () => {
@@ -68,7 +77,7 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
-async function dbGet(cacheKey: string): Promise<string | null> {
+async function dbGet(cacheKey: string): Promise<{ data: Uint8Array; mime: string } | null> {
   try {
     const database = await openDB()
     return new Promise((resolve, reject) => {
@@ -87,7 +96,7 @@ async function dbGet(cacheKey: string): Promise<string | null> {
           lastAccessed: Date.now(),
         })
 
-        resolve(entry.dataUrl)
+        resolve({ data: new Uint8Array(entry.data), mime: entry.mime })
       }
 
       req.onerror = () => reject(req.error)
@@ -97,7 +106,7 @@ async function dbGet(cacheKey: string): Promise<string | null> {
   }
 }
 
-async function dbSet(cacheKey: string, dataUrl: string): Promise<void> {
+async function dbSet(cacheKey: string, data: Uint8Array, mime: string): Promise<void> {
   try {
     const database = await openDB()
     const now = Date.now()
@@ -105,7 +114,7 @@ async function dbSet(cacheKey: string, dataUrl: string): Promise<void> {
     const tx = database.transaction(STORE_NAME, 'readwrite')
     const store = tx.objectStore(STORE_NAME)
 
-    store.put({ cacheKey, dataUrl, createdAt: now, lastAccessed: now } as CacheEntry)
+    store.put({ cacheKey, data, mime, createdAt: now, lastAccessed: now } as CacheEntry)
 
     // 异步清理过期条目 (不等待完成)
     dbCleanup(database)
@@ -213,7 +222,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
       }
 
       case 'set': {
-        await dbSet(payload.cacheKey, payload.dataUrl)
+        await dbSet(payload.cacheKey, payload.data, payload.mime)
         self.postMessage({ id, type } as WorkerResponse)
         break
       }

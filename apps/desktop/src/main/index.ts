@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, session } from 'electron'
 import { readFile, unlink, readdir, stat } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import { join, extname, basename } from 'node:path'
@@ -13,7 +13,7 @@ import heicConvert  from 'heic-convert'
 const HEIC_EXTENSIONS = new Set(['.heic', '.heif'])
 
 /** 缩略图 LRU 缓存 (进程内热缓存, 避免重复 sharp 处理) */
-const thumbnailLRU = new Map<string, string>()
+const thumbnailLRU = new Map<string, { buffer: Buffer; mime: string }>()
 const THUMBNAIL_LRU_MAX = 500
 
 /** 缓存键计算: 基于文件 size + mtimeMs 的 MD5 前缀, 文件变化时自动失效 */
@@ -22,7 +22,7 @@ function computeCacheKey(size: number, mtimeMs: number): string {
 }
 
 /** LRU set: 缓存达到上限时淘汰最早条目 */
-function lruSet(cache: Map<string, string>, key: string, value: string): void {
+function lruSet(cache: Map<string, { buffer: Buffer; mime: string }>, key: string, value: { buffer: Buffer; mime: string }): void {
   if (cache.size >= THUMBNAIL_LRU_MAX) {
     const oldest = cache.keys().next().value
     if (oldest !== undefined) cache.delete(oldest)
@@ -140,100 +140,101 @@ ipcMain.handle(IpcChannels.SCAN_DIRECTORY, async (_event, dirPath: string): Prom
 })
 
 /**
- * 读取文件为缩略图 Data URL — 内存 LRU 缓存 + sharp 缩小
+ * 读取缩略图为 raw Buffer + MIME — 内存 LRU 缓存 + sharp 缩小
  * 同一 session 内重复请求直接命中 LRU 缓存, 避免重复 sharp 解码
+ * 返回 { data: Buffer, mime: string } | null, 渲染端通过 createObjectURL 转为 Blob URL
  */
-ipcMain.handle(IpcChannels.READ_THUMBNAIL_DATA_URL, async (_event, filePath: string): Promise<string> => {
+ipcMain.handle(IpcChannels.READ_THUMBNAIL_DATA_URL, async (_event, filePath: string): Promise<{ data: Uint8Array; mime: string } | null> => {
   // LRU 热缓存命中
   const cached = thumbnailLRU.get(filePath)
-  if (cached !== undefined) return cached
+  if (cached !== undefined) return { data: new Uint8Array(cached.buffer), mime: cached.mime }
 
   try {
     const extLower = extname(filePath).toLowerCase()
     const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.avif']
-    let result: string
+    let buffer: Buffer
+    let mime: string
 
     if (imageExts.includes(extLower)) {
-      // JPEG 三级降级链: CMYK → 损坏 EXIF → 原始 base64
+      // JPEG 三级降级链: CMYK → 损坏 EXIF → 原始 buffer
       if (extLower === '.jpg' || extLower === '.jpeg') {
         try {
           // Level 1: 全流水线 + 色彩空间转换 + EXIF 旋转
-          const resized = await sharp(filePath)
+          buffer = await sharp(filePath)
             .rotate()
             .toColorspace('srgb')
             .resize({ width: 100, withoutEnlargement: true })
             .toFormat('webp', { quality: 60 })
             .toBuffer()
-          result = `data:image/webp;base64,${resized.toString('base64')}`
+          mime = 'image/webp'
         } catch {
           try {
             // Level 2: 跳过 .rotate() — 处理损坏的 EXIF 方向数据
-            const resized = await sharp(filePath)
+            buffer = await sharp(filePath)
               .toColorspace('srgb')
               .resize({ width: 100, withoutEnlargement: true })
               .toFormat('webp', { quality: 60 })
               .toBuffer()
-            result = `data:image/webp;base64,${resized.toString('base64')}`
+            mime = 'image/webp'
           } catch {
-            // Level 3: 原始 JPEG base64 — 浏览器可能渲染出 sharp 无法解码的文件
-            const rawBuf = await readFile(filePath)
-            result = `data:image/jpeg;base64,${rawBuf.toString('base64')}`
+            // Level 3: 原始 JPEG buffer — 浏览器可能渲染出 sharp 无法解码的文件
+            buffer = await readFile(filePath)
+            mime = 'image/jpeg'
           }
         }
       } else {
-        const resized = await sharp(filePath)
+        buffer = await sharp(filePath)
           .rotate()
           .resize({ width: 100, withoutEnlargement: true })
           .toFormat('webp', { quality: 60 })
           .toBuffer()
-        result = `data:image/webp;base64,${resized.toString('base64')}`
+        mime = 'image/webp'
       }
     } else if (HEIC_EXTENSIONS.has(extLower)) {
-      const buffer = await readFile(filePath)
-      const converted = await heicConvert({ buffer, format: 'JPEG', quality: 0.6 })
-      const resized = await sharp(converted)
+      const fileBuf = await readFile(filePath)
+      const converted = await heicConvert({ buffer: fileBuf, format: 'JPEG', quality: 0.6 })
+      buffer = await sharp(converted)
         .resize({ width: 100, withoutEnlargement: true })
         .toFormat('webp', { quality: 60 })
         .toBuffer()
-      result = `data:image/webp;base64,${resized.toString('base64')}`
+      mime = 'image/webp'
     } else {
-      result = ''
+      return null
     }
 
     // 存入 LRU 热缓存
-    if (result) lruSet(thumbnailLRU, filePath, result)
-    return result
+    const entry = { buffer, mime }
+    lruSet(thumbnailLRU, filePath, entry)
+    return { data: new Uint8Array(buffer), mime }
   } catch (err) {
     console.error(`[IPC] READ_THUMBNAIL_DATA_URL 失败: ${filePath}`, err)
-    return ''
+    return null
   }
 })
 
-/** 读取文件为 Data URL (用于预览) — 支持 HEIC/HEIF 自动转 JPEG */
-ipcMain.handle(IpcChannels.READ_FILE_DATA_URL, async (_event, filePath: string): Promise<string> => {
+/** 读取文件为 raw Buffer + MIME (用于预览) — 支持 HEIC/HEIF 自动转 JPEG */
+ipcMain.handle(IpcChannels.READ_FILE_DATA_URL, async (_event, filePath: string): Promise<{ data: Uint8Array; mime: string } | null> => {
   try {
     const extLower = extname(filePath).toLowerCase()
     const ext = extLower.slice(1)
+    const mimeBase = ext === 'jpg' ? 'jpeg' : ext
 
     const buffer = await readFile(filePath)
-    const mime = ext === 'jpg' ? 'jpeg' : ext
 
-    // HEIC/HEIF 需要 sharp 解码后转 JPEG（浏览器不支持原生渲染）
+    // HEIC/HEIF 需要解码后转 JPEG（浏览器不支持原生渲染）
     if (HEIC_EXTENSIONS.has(extLower)) {
-      // const jpegBuffer = await sharp(filePath).toFormat('jpeg', { quality: 90 }).toBuffer()
       const outputBuffer = await heicConvert({
-        buffer: buffer, // the HEIC file buffer
-        format: 'JPEG',      // output format
-        quality: 0.8,      // the jpeg compression quality, between 0 and 1
+        buffer,
+        format: 'JPEG',
+        quality: 0.8,
       });
-      return `data:image/jpeg;base64,${outputBuffer.toString('base64')}`
+      return { data: new Uint8Array(outputBuffer), mime: 'image/jpeg' }
     }
 
-    
-    return `data:image/${mime};base64,${buffer.toString('base64')}`
+    return { data: new Uint8Array(buffer), mime: `image/${mimeBase}` }
   } catch (err) {
     console.error(`[IPC] READ_FILE_DATA_URL 失败: ${filePath}`, err)
-    throw new Error(`无法读取文件: ${filePath}`)
+    return null
   }
 })
 
@@ -334,6 +335,20 @@ ipcMain.handle(IpcChannels.UNWATCH_DIRECTORY, async () => {
 // ====== App Lifecycle ======
 
 app.whenReady().then(() => {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline' http://127.0.0.1:3000 http://127.0.0.1:5173; " +
+          "connect-src 'self' http://127.0.0.1:3000 http://127.0.0.1:5173;" +
+          "img-src 'self' blob: data:;default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:"
+        ]
+      }
+    });
+  });
+
   createWindow()
 
   app.on('activate', () => {

@@ -19,16 +19,16 @@ test.describe('Desktop App Startup', () => {
     debugger
 
     try {
-      const window = await electronApp.firstWindow()
-      await expect(window).toBeVisible()
+      const page = await electronApp.firstWindow()
+      await expect(page.locator('body')).toBeVisible()
 
       // 窗口应有标题
-      const title = await window.title()
+      const title = await page.title()
       expect(title).toBeDefined()
       expect(title.length).toBeGreaterThan(0)
 
       // 窗口尺寸应合理
-      const bounds = await window.evaluate(() => ({
+      const bounds = await page.evaluate(() => ({
         width: window.innerWidth,
         height: window.innerHeight,
       }))

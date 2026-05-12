@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { VIRTUAL_SCROLL, MASONRY, formatFileSize, isImageFile } from '@cloud-photo/shared'
 import type { Media } from '@cloud-photo/shared'
-import { getThumbnail, setThumbnail } from '../stores/thumbnailCache'
+import { getThumbnail, setThumbnail, thumbnailToBlobUrl } from '../stores/thumbnailCache'
+import type { ThumbnailItem } from '../stores/thumbnailCache'
 
 interface PhotoGridProps {
   files: Media[]
@@ -15,7 +16,7 @@ interface PhotoGridProps {
 const GRID_COL_RANGE = { min: 6, max: 9 }
 const MASONRY_COL_RANGE = { min: 4, max: 6 }
 
-/** 响应式计算列数 — 容器越宽列越多, 在 min~max 范围内 */
+/** 响应式计算列数 — 容器越宽列数越多, 在 min~max 范围内 */
 function calcColumnCount(containerWidth: number, range: { min: number; max: number }): number {
   const WIDTH_MIN = 800
   const WIDTH_MAX = 1600
@@ -24,7 +25,47 @@ function calcColumnCount(containerWidth: number, range: { min: number; max: numb
   return Math.max(range.min, Math.min(count, range.max))
 }
 
-/** 单个缩略图项 — 使用缩略图 IPC + async decode 优化 */
+/** 将 ThumbnailItem 转为 Blob URL, 并自动追踪生命周期 */
+function useBlobUrl(item: ThumbnailItem | null): string | null {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const prevRef = useRef<ThumbnailItem | null>(null)
+  const urlRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    // 数据未变 → 跳过
+    if (prevRef.current === item) return
+    prevRef.current = item
+
+    // 撤销旧 Blob URL
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current)
+      urlRef.current = null
+    }
+
+    if (!item) {
+      setBlobUrl(null)
+      return
+    }
+
+    const url = thumbnailToBlobUrl(item)
+    urlRef.current = url
+    setBlobUrl(url)
+  }, [item])
+
+  // 组件卸载时撤销
+  useEffect(() => {
+    return () => {
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current)
+        urlRef.current = null
+      }
+    }
+  }, [])
+
+  return blobUrl
+}
+
+/** 单个缩略图项 — 使用 Blob URL + async decode 优化 */
 function Thumbnail({ media, onClick, onSelect, width, isSelected }: {
   media: Media
   onClick: () => void
@@ -33,7 +74,8 @@ function Thumbnail({ media, onClick, onSelect, width, isSelected }: {
   isSelected: boolean
 }) {
   const [loaded, setLoaded] = useState(false)
-  const [dataUrl, setDataUrl] = useState<string | null>(null)
+  const [thumbnailItem, setThumbnailItem] = useState<ThumbnailItem | null>(null)
+  const blobUrl = useBlobUrl(thumbnailItem)
   const [mediaWidth, setMediaWidth] = useState<number | null>(null)
   const [mediaHeight, setMediaHeight] = useState<number | null>(null)
   const [vheight, setVHeight] = useState<number | 'auto'>(width)
@@ -42,55 +84,74 @@ function Thumbnail({ media, onClick, onSelect, width, isSelected }: {
   useEffect(() => {
     if (!media.localPath || !window.electronAPI) return
     let cancelled = false
+    let localBlobUrl: string | null = null
 
-    /** 异步加载并解码图片 */
-    function loadAndDecode(url: string) {
+    /** 异步加载并解码图片 (blob URL 适用, 与 data URL 相同接口) */
+    async function loadAndDecode(url: string) {
       const img = new Image()
       img.src = url
       if (img.decode) {
-        img.decode().then(() => {
+        try {
+          await img.decode()
           if (!cancelled) {
             setMediaWidth(img.naturalWidth)
             setMediaHeight(img.naturalHeight)
-            setDataUrl(url); 
             setLoaded(true)
           }
-        }).catch(() => {
-          if (!cancelled) setDataUrl(url)
-        })
-      } else {
-        if (!cancelled) setDataUrl(url)
+        } catch {
+          // decode 失败也保留画面
+        }
       }
     }
 
-    // L1+L2: 检查缓存 (内存 LRU → IndexedDB)
-    getThumbnail(media).then((cachedUrl) => {
+    /** 将 ThumbnailItem 设为 state (触发 Blob URL 创建) */
+    function applyThumbnail(item: ThumbnailItem) {
       if (cancelled) return
-      if (cachedUrl) {
-        loadAndDecode(cachedUrl)
+      setThumbnailItem(item)
+      // 开始图片解码 (Blob URL 已由 useBlobUrl 创建, 此时 blobUrl state 尚未更新,
+      // 所以直接传递 item 转为临时 URL 用于解码)
+      const tempBlobUrl = thumbnailToBlobUrl(item)
+      localBlobUrl = tempBlobUrl
+      loadAndDecode(tempBlobUrl)
+    }
+
+    // L1+L2: 检查缓存 (内存 LRU → IndexedDB)
+    getThumbnail(media).then((cached) => {
+      if (cancelled) return
+      if (cached) {
+        applyThumbnail(cached)
         return
       }
 
       // L3: 通过 IPC 请求缩略图 (主进程 sharp 生成)
-      window.electronAPI.readThumbnailDataUrl(media.localPath).then((url) => {
+      window.electronAPI.readThumbnailDataUrl(media.localPath).then((result) => {
         if (cancelled) return
-        if (url) {
+        if (result) {
+          const item: ThumbnailItem = { data: result.data, mime: result.mime }
           // 异步回填缓存 (不阻塞展示)
-          setThumbnail(media, url)
-          loadAndDecode(url)
+          setThumbnail(media, item)
+          applyThumbnail(item)
         } else {
           // 非图片(视频等): 回退到原图读取
-          window.electronAPI.readFileDataUrl(media.localPath).then((fallbackUrl) => {
-            if (!cancelled) setDataUrl(fallbackUrl)
+          window.electronAPI.readFileDataUrl(media.localPath).then((fallback) => {
+            if (cancelled || !fallback) return
+            const item: ThumbnailItem = { data: fallback.data, mime: fallback.mime }
+            applyThumbnail(item)
           })
         }
       })
     })
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      // 撤销本次 useEffect 创建的临时 Blob URL (避免泄漏)
+      if (localBlobUrl) {
+        URL.revokeObjectURL(localBlobUrl)
+      }
+    }
   }, [media.localPath, media.md5])
 
-  // // 估算高度（保持宽高比）
+  // 估算高度（保持宽高比）
   useEffect(() => {
     const aspectRatio = mediaWidth && mediaHeight ? mediaWidth / mediaHeight : 1
     let vheight: number | 'auto' = width
@@ -103,15 +164,6 @@ function Thumbnail({ media, onClick, onSelect, width, isSelected }: {
     setVHeight(vheight)
     setVWidth(vwidth)
   }, [mediaWidth, mediaHeight])
-  
-
-  // 内存管理: 组件卸载时释放 dataUrl
-  useEffect(() => {
-    return () => {
-      // dataUrl 是 base64 字符串, 由 GC 回收
-      // 这里不需要额外操作, 但避免闭包持有 url 引用即可
-    }
-  }, [])
 
   return (
     <div
@@ -139,10 +191,10 @@ function Thumbnail({ media, onClick, onSelect, width, isSelected }: {
           <div className="absolute inset-0 bg-zinc-800 animate-pulse" />
         )}
 
-        {/* 图片 (非关键资源, fetchpriority="low"; CSS will-change 提示 GPU 合成) */}
-        {dataUrl && (
+        {/* 图片 (使用 Blob URL, 比 base64 节省 ~33% 内存, 通过 createObjectURL 生成) */}
+        {blobUrl && (
           <img
-            src={dataUrl}
+            src={blobUrl}
             alt={media.filename}
             className={`w-full h-full  transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
             decoding="async"
