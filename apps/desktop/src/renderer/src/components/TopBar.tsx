@@ -1,5 +1,6 @@
-import { FolderOpen, Search, Grid3X3, List, LayoutGrid, RefreshCw, Upload, AlertTriangle } from 'lucide-react'
+import { FolderOpen, Search, Grid3X3, List, LayoutGrid, RefreshCw, Upload, AlertTriangle, LogOut, UserCircle } from 'lucide-react'
 import type { ViewMode } from '../types'
+import type { AuthUser } from '../stores/authStore'
 
 interface TopBarProps {
   onOpenFolder: () => void
@@ -14,6 +15,10 @@ interface TopBarProps {
   viewMode: ViewMode
   /** 切换视图模式 */
   onViewModeChange: (mode: ViewMode) => void
+  /** 当前登录用户 */
+  user?: AuthUser | null
+  /** 登出 */
+  onLogout?: () => void
 }
 
 export function TopBar({
@@ -27,6 +32,8 @@ export function TopBar({
   conflictCount,
   viewMode,
   onViewModeChange,
+  user,
+  onLogout,
 }: TopBarProps) {
   return (
     <header className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/60">
@@ -134,6 +141,27 @@ export function TopBar({
           className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
         />
       </div>
+
+      {/* 用户信息 */}
+      {user ? (
+        <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/50 border border-zinc-700/30">
+            <UserCircle size={14} className="text-zinc-400" />
+            <span className="text-xs text-zinc-400">{user.username}</span>
+          </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-zinc-800 transition-colors text-xs text-zinc-500 hover:text-zinc-300"
+              title="登出"
+            >
+              <LogOut size={14} />
+            </button>
+          )}
+        </div>
+      ) : (
+        <span className="text-xs text-zinc-600 ml-auto">未登录</span>
+      )}
 
       {/* 文件计数 */}
       <span className="text-xs text-zinc-500 tabular-nums">

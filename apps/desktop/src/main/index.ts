@@ -340,10 +340,10 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; " +
-          "script-src 'self' 'unsafe-inline' http://127.0.0.1:3000 http://127.0.0.1:5173; " +
-          "connect-src 'self' http://127.0.0.1:3000 http://127.0.0.1:5173;" +
-          "img-src 'self' blob: data:;default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:"
+          "script-src 'self' 'unsafe-inline'; " +
+          "connect-src 'self' localhost:3001; " +
+          "img-src 'self' blob: data: localhost:3001; " +
+          "default-src * 'self' 'unsafe-inline' 'unsafe-eval'; "
         ]
       }
     });

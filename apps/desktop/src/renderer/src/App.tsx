@@ -1,9 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useMediaStore } from './stores/mediaStore'
+import { useAuthStore, authHeader } from './stores/authStore'
 import { PhotoGrid } from './components/PhotoGrid'
 import { ListView } from './components/ListView'
 import { TopBar } from './components/TopBar'
 import { Lightbox } from './components/Lightbox'
+import { AuthDialog } from './components/AuthDialog'
 import { ConflictDialog } from './components/ConflictDialog'
 import type { Media } from '@cloud-photo/shared'
 import type { ViewMode } from './types'
@@ -12,6 +14,7 @@ const SERVER_BASE = 'http://localhost:3001'
 
 export default function App() {
   const { files, scanDirectory, rescanCurrentDir, removeFiles, loading, error, watching } = useMediaStore()
+  const { token, user, logout, hydrate } = useAuthStore()
   const [lightboxMedia, setLightboxMedia] = useState<Media | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [focusedId, setFocusedId] = useState<string | null>(null)
@@ -20,6 +23,9 @@ export default function App() {
   const [conflictCount, setConflictCount] = useState(0)
   const [showConflicts, setShowConflicts] = useState(false)
   const dragCounter = useRef(0)
+
+  // 启动时从 localStorage 恢复 session
+  useEffect(() => { hydrate() }, [])
 
   const handleOpenFolder = useCallback(async () => {
     if (!window.electronAPI) {
@@ -66,19 +72,23 @@ export default function App() {
   /** 获取同步状态（含冲突数） */
   const fetchSyncStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${SERVER_BASE}/api/sync/status`)
+      const res = await fetch(`${SERVER_BASE}/api/sync/status`, {
+        headers: { ...authHeader() },
+      })
       if (!res.ok) return
       const data = await res.json()
       setConflictCount(data.conflict ?? 0)
     } catch {
       // 服务未运行时忽略
     }
-  }, [])
+  }, [token])
 
   /** 同步到云端 */
   const handleSyncToCloud = useCallback(async () => {
     try {
-      const res = await fetch(`${SERVER_BASE}/api/sync/status`)
+      const res = await fetch(`${SERVER_BASE}/api/sync/status`, {
+        headers: { ...authHeader() },
+      })
       if (!res.ok) throw new Error('服务未运行')
       const data = await res.json()
       alert(
@@ -230,6 +240,8 @@ export default function App() {
         conflictCount={conflictCount}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        user={user}
+        onLogout={logout}
       />
 
       {/* 选中状态栏 */}
@@ -348,6 +360,9 @@ export default function App() {
           }}
         />
       )}
+
+      {/* 未认证 → 全屏登录/注册 */}
+      {!token && <AuthDialog />}
     </div>
   )
 }
